@@ -529,9 +529,10 @@
   }
 
   // ---------- Wi-Fi names you can see (real: you read them off your phone's Wi-Fi list) ----------
-  // Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi only reaches
-  // about 100 m. So a name you can see puts you near a mapped place with that name: one of them, if it's a
-  // chain. Works with GPS off and no camera. Anyone can name a hotspot "Lidl", so it is checked like any witness.
+  // Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi rarely reaches more
+  // than 200 m. So a name you can see puts you near a mapped place with that name: one of them, if it's a
+  // chain. Works with GPS off and no camera. Anyone can name a hotspot "Lidl", so it is checked like any
+  // witness, and the engine counts GPS and all Wi-Fi names as one possible fault (one radio attacker).
   const WIFI_REACH = 80;            // sigma (m): 95 % of the time within about 200 m of the router
   function actRadio() {
     if (state.story) return;

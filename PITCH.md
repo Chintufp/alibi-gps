@@ -40,7 +40,7 @@ demo, and reliability and next steps.
 > you are.
 > Then Alibi does what GPS receivers do with satellites, but for whole sources: it predicts what each witness
 > should say from all the others. If one is way off, it's lying, and it's thrown out.
-> And the ± is a protection level: it still holds if one witness is lying. Green means proven. Here GPS and
+> And the ± is a protection level: built to hold even if one witness is lying. Green means checked. Here GPS and
 > 'I'm at the fell centre' agree, so she's within ±65 m even if one of them were lying."
 
 ### 3. Demo: the Lapland story (1:45–3:40)
@@ -48,7 +48,7 @@ demo, and reliability and next steps.
 Click **Next** through the steps and say one line each:
 
 - **Step 2:** "She walks 2 km. GPS says ±12 m, and her steps agree, but steps drift, so they can only vouch
-  for ±500 m. Yellow: they agree, but it's not proven. Alibi never promises more than it can check."
+  for ±500 m. Yellow: they agree, but nothing checks them closely, so Alibi warns you instead of overpromising."
 - **Step 3:** "A spoofer slowly drags GPS 650 m away. Too little to prove, but the ± grows to 1.3 km, and the
   truth is still inside it."
 - **Step 4:** "She aims at Kiilopää. GPS doesn't fit the line. But maybe she mixed up the fell? One against
@@ -102,7 +102,7 @@ with these numbers.
 **Say:**
 > "Next: a native Android app to read real cell towers, receiver gain and the barometer, and to run in the
 > background; field tests with hikers and rescue volunteers; and automatic witnesses, like star photos solved
-> with ESA's open-source tetra3. Everything runs offline on an ordinary phone. GPS is just one witness. Alibi
+> with ESA's open-source tetra3. It runs on an ordinary phone, offline once your area is saved. GPS is just one witness. Alibi
 > asks the others."
 
 ---
@@ -112,7 +112,7 @@ with these numbers.
 1. **Hook (20 s):** "Raise your hand if you'd know your phone's GPS was lying. Nobody would. That's the problem."
 2. **User and need (40 s):** Aino in Lapland, 30 km from the border; interference facts (Traficom, Finnmark);
    getting lost is common (100+ lost berry pickers one summer, 40 in Lapland), and rescuers depend on GPS.
-3. **Idea (40 s):** witnesses, shapes, catching the liar, the protection level, green means proven.
+3. **Idea (40 s):** witnesses, shapes, catching the liar, the protection level, green means checked.
 4. **Demo (90 s):** Lapland steps 3 → 4 → 6 → 7 (the growing ±, the honest "can't tell", the compass-free
    angles, Murmansk).
 5. **Proof (30 s):** organisers' data (the tunnel, the drag caught in 12 s, no false alarms in 1,836 real

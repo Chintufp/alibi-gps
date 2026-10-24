@@ -40,17 +40,18 @@ the border in Finnmark, not yet on her trail, so we extrapolate. Her decisions d
 going or turn back, which way to the hut, and what position to give 112. A spoofed GPS looks perfect, so her
 phone can't warn her. Map, compass and trail markers still work, but then everything rests on her alone and
 nothing checks her. Alibi turns the same skills (aiming at a fell, recognising the hut) into witnesses that
-check each other, and tells her when her position is proven and when it is not.
+check each other, and tells her when her position is checked and when it is not.
 
 **What Alibi gives her:** one position built from everything she has, a ± she can trust even if one source is
-lying, a light that tells her when to stop and add a sighting, and all of it offline. The same engine fits
+lying, a light that tells her when to stop and add a sighting, and all of it offline once her area is saved
+(only the Wi-Fi lookup needs the network). The same engine fits
 boaters in the eastern Gulf of Finland (Boat mode), where interference is a regular event today.
 
 ### The light and what to do
 
 | Light | Means | What Aino does |
 |---|---|---|
-| green | **proven**: the ± is inside her safety limit (Walk: 150 m) even if one witness is lying | carry on |
+| green | **checked**: the ± is inside her safety limit (Walk: 150 m) even if one witness (or one shared cause, such as one mixed-up fell or one radio attacker) is wrong, with 99 % confidence under Alibi's error sizes | carry on |
 | yellow | the witnesses agree, but nothing proves the position that closely (or only one witness is left) | stay on the marked trail, slow down, add a sighting that doesn't depend on the weakest witness (Alibi names it and suggests the best landmark) |
 | red | the witnesses disagree and Alibi can't tell who is lying, or even the best guess is far too uncertain | stop; don't take shortcuts or cross lakes; add sightings; if she needs help, call 112 and give the position Alibi trusts, not the raw GPS |
 
@@ -92,9 +93,9 @@ on the position until it is checked again. A normal hike with GPS and steps is m
    but a check on GPS that was itself started from GPS can never make the light green.
 6. **Trust light and safety limit.** Green means the ± is inside the safety limit for the mode (Walk 150 m,
    chosen as roughly how far off you can still find a hut or trail marker in poor weather; Drive 50 m; Boat 100 m). Yellow
-   means the best guess is usable but not proven that closely. Red means a stand-off, or even the best guess
-   is far too uncertain. So adding an honest witness never makes the light worse. The limit can be changed
-   in Settings.
+   means the best guess is usable but not checked that closely. Red means a stand-off, or even the best guess
+   is far too uncertain. An honest witness can turn yellow into red, and that is on purpose: it is how a
+   hidden lie comes out (demo step 4). The limit can be changed in Settings.
 7. **Extra checks.** The **map rule** (walkers aren't in lakes, cars stay on roads, boats stay on lakes and
    rivers) uses OpenStreetMap. It only makes those places very unlikely, not impossible, because people do
    walk on frozen lakes.
@@ -155,6 +156,20 @@ the random numbers.
     in steps 6 and 9).
   - **Errors 3× bigger:** green while more than 150 m off once in 1,000 runs (step 9).
 - **Honest witnesses thrown out:** none with the default seed, 1 in 1,000 runs with seed 7.
+- **Wi-Fi names** have their own test, `node tools/check_wifi.js . 300` (a city, made-up places), including the
+  attacks the round-3 judges found:
+
+| Case (300 runs each) | with the assumed errors | errors 2× bigger, heavy tails |
+|---|---|---|
+| honest GPS + café Wi-Fi + a fake hotspot named after a shop 1.3 km away | fake thrown out 100 %, never green | fake thrown out 74 %, never green |
+| GPS spoofed 3 km; the Wi-Fi lookup was centred by it and found only shops near the fake spot | never green (yellow: the places fall together with GPS) | never green |
+| GPS spoofed 2 km + two fake Wi-Fi names there + an honest guess ±200 m | red (stand-off) 100 % | red 99 %, yellow 1 % |
+| no attack: three names from one café, mapped 400 m off | red 100 % (they count once; GPS and Wi-Fi disagree) | red 100 % |
+| GPS 600 m off + café Wi-Fi + guess ±300 m | never green; GPS caught 19 %, honest witness dropped 2 % | never green; honest witness dropped 41 % |
+
+  Wi-Fi names never produced a green that was more than 150 m off. The last line is the weak spot: two weak
+  honest witnesses against one strong liar, with errors bigger than assumed, often lose the vote; the light
+  is then yellow or red, but the yellow ± can miss the truth.
 - **A slow drag is the hard case.** How often a hidden GPS lie was caught after 3 km of walking (50 runs per
   size, so roughly ±10 %):
 
@@ -189,7 +204,8 @@ jumps to the next one.
 - **It can never be green on its own.** The motion check was started from GPS 25 s earlier, so a slow enough
   drag moves both. With only GPS and this check, the best Alibi says is yellow, "consistent". Green needs a
   witness that doesn't come from GPS (a landmark, a cell tower, the map).
-- **It says why GPS is missing.** Satellites heard fine but no position: a receiver hiccup. No satellites at
+- **It says why GPS is missing.** Satellites heard fine but no position: most likely a receiver hiccup (a
+  spoofer taking over can look like this too, which the check against dead reckoning then catches). No satellites at
   all: blocked or jammed. "Gain normal, so blocked" is only said where the phone actually logged its receiver
   gain at that moment, and the jamming check runs first, so it can warn while GPS still has a position.
 - **The speed stands in for a sensor.** The recordings have no wheel-speed or odometer data, so the recorded
@@ -200,7 +216,7 @@ Results on the real train recording:
 
 | GPS outage | What Alibi says | Distance without GPS | GPS comes back |
 |---|---|---|---|
-| 27 s | 33 satellites heard fine: a receiver hiccup, not jamming | 440 m | 8 m from dead reckoning (±255 m): trusted again |
+| 27 s | 33 satellites heard fine: most likely a receiver hiccup, not jamming | 440 m | 8 m from dead reckoning (±255 m): trusted again |
 | 111 s, curved tunnel | no satellites; the gain wasn't logged in the tunnel, so jamming can't be ruled out (most likely blocked) | 2.3 km | 148 m off (±1.5 km, because the speed is unknown in the tunnel): trusted again |
 | 7 s tunnel | no satellites; the gain reads normal, but it never changes in this recording, so it proves little | 203 m | 38 m off (±55 m): trusted again |
 
@@ -217,7 +233,7 @@ No false alarms: in 859 seconds of the train and 977 of the car, honest GPS was 
 | Jamming (car, receiver gain drops 9 dB) | warned 15 s before GPS lost its position; GPS came back 19 m from dead reckoning |
 
 The honest weak spots: a drag slower than about 1 m/s (car) or 3 m/s (train) can go unnoticed, and then the
-truth can be outside the ± shown (in 20–56 % of those seconds); small undetected jumps of 20–75 m leave it
+truth can be outside the ± shown (in 20–52 % of those seconds); small undetected jumps of 20–75 m leave it
 outside in 4–12 % of seconds. That's why the light is never green with only this check. After the 111 s
 tunnel a lie of up to about 2 km can't be caught, because without a speed sensor the train really could be
 anywhere within ±1.5 km. A third witness closes these gaps: a landmark, a cell tower, or the map (trains stay
@@ -265,12 +281,12 @@ it. With no GPS at all:
 
 | Button | What it does | Real or simulated |
 |---|---|---|
-| GPS | Uses your phone's GPS as one witness. No GPS fix (a laptop)? It offers a clearly labelled simulated GPS at the map centre for demos. | real |
-| I'm about here | Tap the map where you think you are (±200 m / 1 km / 5 km). GPS is hidden while you choose, so your guess is your own and not a copy of a possibly spoofed GPS dot. | real |
+| GPS | Uses your phone's location as one witness (satellites; the browser may also mix in Wi-Fi and cell positioning, which a GPS spoofer doesn't touch but which isn't independent of Alibi's own Wi-Fi witness either). No GPS fix (a laptop)? It offers a clearly labelled simulated GPS at the map centre for demos. | real |
+| I'm about here | Tap the map where you think you are (±200 m / 1 km / 5 km). GPS is hidden while you choose, so your guess isn't a copy of a possibly spoofed GPS dot. But the map may still be centred where GPS put it, so tap what you recognise (a sign, a building, a lake), not just the middle of the map. | real |
 | Landmark | Loads hill tops, churches, towers, water towers, chimneys, lighthouses, wind turbines, ski jumps, wilderness huts, sea beacons, tall buildings and masts from OpenStreetMap. Tap one, put the camera's red cross on it and press **Take**. Check the reading, then **Add witness**. The compass draws a line. You can also mark a landmark yourself. | real |
 | Angle A↔B | Tap two landmarks, aim at A and press **Take**, then turn on the spot to B and press **Take** again. The **gyroscope** measures how far you turned, so there is no compass to be fooled by metal or magnets. The angle puts you on an arc through A and B. Two angles (three landmarks) give a fix; a third angle or another witness makes it a fix Alibi can vouch for. | real |
 | Sky | Pick the Sun or a bright star, aim at it and press **Take**. Its height above the horizon puts you on a band on the map. Aiming at the Sun can also **correct the phone compass with no GPS**: the clock says where the Sun stands, and being 20 km off changes that by less than 0.3°. | real |
-| Wi-Fi / cell | Type a Wi-Fi name from your phone's Wi-Fi list (no need to connect; your phone lists them with GPS off). Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi reaches only about 100 m. Alibi looks the name up in OpenStreetMap (name, brand, or a mapped Wi-Fi name) where the map is looking and puts a small circle around each place that fits: one shop, or every shop of a chain, and the other witnesses pick the right one. `eduroam` means a university or college. Names that move with you (train, bus, ferry, phone hotspots) and home routers' factory names are refused with a reason. | real |
+| Wi-Fi / cell | Type a Wi-Fi name from your phone's Wi-Fi list (no need to connect; your phone lists them with GPS off). Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi rarely reaches more than 200 m. Alibi looks the name up in OpenStreetMap (name, brand, or a mapped Wi-Fi name) where the map is looking and puts a small circle around each place that fits: one shop, or every shop of a chain, and the other witnesses pick the right one. `eduroam` usually means a university or college (some libraries and hospitals have it too, so it counts as one possible liar like any name). Names that move with you (train, bus, ferry, phone hotspots) and home routers' factory names are refused with a reason. | real |
 | … cell towers | In the same panel. Shows the masts around you as landmarks. Masts within 250 m of each other count as one site. Alibi uses at most three sites, spread around you (the nearest, plus others up to twice as far in clearly different directions), and only those get a pink ring: a narrow one for the serving cell (timing advance) and wide ones for neighbours (signal strength). Browsers can't read cell towers, so which ones you "hear" is made up from your position. | simulated |
 | Spoof GPS | Simulates an attack: first a slow drag (3 m/s), then a 120 km jump. The grey dot is your real GPS. | simulated |
 | Save offline | Saves the landmarks, masts and lakes for 6 × 6 km around the map's centre onto the phone (roads too in Drive mode), so they work with no network. | real |
@@ -284,10 +300,12 @@ it. With no GPS at all:
   compass ±3°, gyroscope angle ±2°, phone tilt ±1°, inclinometer ±0.4°. Bigger ± makes the line wider and the
   witness count less. These defaults are reasoned estimates, not yet measured in the field.
 
-**The compass gets checked too.** While you aim, Alibi compares the phone compass with the gyroscope, which
+**The compass gets a rough check.** While you aim, Alibi compares the phone compass with the gyroscope, which
 magnets can't fool. If the compass turned differently from the gyroscope in the last 10 seconds (by more than
 5°), something magnetic is probably near, so Alibi warns you and widens the ±. On an iPhone it also uses the
-phone's own compass accuracy. Its blind spot: a compass that is off by a **steady** amount passes this check,
+phone's own compass accuracy. It catches a magnet that moves the needle while you aim, not much more: in the
+train recording the compass was more than 20° off in 16 % of the seconds where it agreed with the gyroscope,
+against 25 % where it didn't. Its blind spot: a compass that is off by a **steady** amount passes this check,
 for example Android's compass in the train, which followed the gyroscope 85° away from the magnetometer.
 Calibrating on a landmark, on the Sun, or using the angle tool, covers that. The compass can only be
 **calibrated** against GPS when another witness confirms GPS (a green light), so a spoofed GPS can't quietly
@@ -300,7 +318,10 @@ until it is measured.
 for (a green light) along with your steps and compass, as a witness of its own, with no effort from you: if
 GPS drifts away from it, the light changes, the phone buzzes when it turns red, and only then does Alibi ask
 you for a sighting. It is moved to each new green position, never to an unchecked GPS fix, or a slow spoofer
-could drag it along. A web page can't count steps with the screen off, so the screen stays on while it runs
+could drag it along. A green now has to hold with GPS and every Wi-Fi name removed together, so a spoofer who
+also fakes Wi-Fi names can't move it either. **Without step counting, witnesses age:** Alibi can't tell
+whether you moved since a sighting, so each witness blurs by about 1 m per second of its age on foot (15 m/s
+by car, 5 m/s by boat), and the list shows how old it is. A web page can't count steps with the screen off, so the screen stays on while it runs
 (a native app would run in the background). It assumes a 0.7 m stride and that you walk where the phone
 points, so its 8 % drift is a guess until measured.
 
@@ -399,7 +420,7 @@ servers forbid it; a real app would host its own.
 | GPS | 5–10 m | jammed or spoofed (that's the point) |
 | Landmark line | 2–5° (≈ 50–200 m at 1–3 km) | fog or darkness; the wrong fell (that's why one sighting against GPS gives red, not a verdict); metal near the phone confusing the compass (Alibi checks the compass against the gyroscope and warns) |
 | Angle A↔B (gyroscope) | 1–2° | you walk or tilt the phone a lot between the two shots; the gyroscope drifts slowly, so take both shots within a few seconds |
-| Wi-Fi name | ±120 m around the place (more for a big campus or mall) | the place isn't on the map, or many places share the name (more than 25 nearby is refused); anyone can name a hotspot "Lidl" (it's then one lying witness, caught like any other: a fake hotspot 1.3 km away was thrown out in 300 of 300 runs); two names from the same building count as two witnesses although they are one |
+| Wi-Fi name | ±200 m around the place (more for a big campus or mall) | the place isn't on the map, or too many places share the name (more than 40 within the search is refused); the lookup needs the network; anyone can name a hotspot "Lidl", and **whoever spoofs GPS can fake Wi-Fi names too**, so GPS and all Wi-Fi names count as one possible liar: Wi-Fi helps find you and catch a lone liar, but never makes the light green on its own |
 | Cell tower ring | ±100–300 m (serving cell) to ±0.5–5 km (neighbours) | wilderness, open sea; a mast mapped in the wrong place; a fake base station (possible, but much harder than faking GPS). Simulated in this demo. |
 | Sky band | ±0.5–1° of tilt ≈ ±50–100 km | clouds. Catches big lies, but can't steer you between rocks. |
 | Steps + compass | drift about 8 % of the distance walked | a long time without another witness |
@@ -420,7 +441,11 @@ What the integrity checks can and can't do:
   outside the ± even when every assumption holds. The fault probabilities and the ± defaults are reasoned
   guesses until field tests measure them; the Monte Carlo above shows what happens when real errors are 2–3×
   bigger than assumed.
-- **A green light can still be over-trusted.** It means "proven to the safety limit under these assumptions",
+- **Witnesses age, but only roughly.** Without step counting, each witness blurs by about 1 m per second of
+  its age on foot (15 m/s by car); faster than that and an old sighting still counts for too much.
+- **Nothing is field-tested yet.** The 15-minute field test above has not been done: every ± is a reasoned
+  estimate, and the Lapland demo's sightings are simulated with those estimates.
+- **A green light can still be over-trusted.** It means "checked to the safety limit under these assumptions",
   not "certainly right". Keep using the trail markers.
 - **Phone practicalities:** the screen stays on while counting steps, which costs battery, and phones lose
   battery fast in the cold. A native app would run in the background with the screen off.

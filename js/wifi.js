@@ -1,7 +1,7 @@
 /* Alibi - Wi-Fi names as witnesses.
    A web page can't scan for Wi-Fi, but you can: your phone's Wi-Fi list shows the networks around you even
-   with GPS off, and shops, cafés, libraries and campuses often name theirs after the place. Wi-Fi only
-   reaches about 100 m, so "I can see Lidl's Wi-Fi" puts you near a Lidl: one of them, if there are several.
+   with GPS off, and shops, cafés, libraries and campuses often name theirs after the place. Wi-Fi rarely
+   reaches more than 200 m, so "I can see Lidl's Wi-Fi" puts you near a Lidl: one of them, if there are several.
    This is not how phones do Wi-Fi positioning (they look up each router's hardware address in Google's or
    Apple's closed databases); it only needs the name and the open map. */
 Alibi.wifi = (function () {
