@@ -34,17 +34,37 @@
       <button class="act" id="actGps"><span>🛰️</span>GPS</button>
       <button class="act" id="actYou"><span>📍</span>I’m about here</button>
       <button class="act" id="actLandmark"><span>🗼</span>Landmark</button>
+      <button class="act" id="actAngle"><span>📐</span>Angle A↔B</button>
       <button class="act" id="actSky"><span>✨</span>Sky</button>
       <button class="act" id="actTowers"><span>📡</span>Cell towers</button>
       <button class="act danger" id="actSpoof"><span>😈</span><em id="spoofLabel">Spoof GPS</em></button>
+      <button class="act" id="actSave"><span>💾</span>Save offline</button>
     </div>
     <h4>Witnesses</h4>
     <ul id="witnesses" class="witnesses"></ul>
     <div class="footer-row">
       <button id="actStory" class="primary">🎬 Lapland demo</button>
+      <button id="actReplay" title="Replay the organisers’ real GPS recordings">🚆 Real log</button>
       <button id="actClear">Clear</button>
       <button id="actSettings" aria-label="Settings">⚙️</button>
     </div>
+  </section>
+
+  <!-- replay of a real GPS recording -->
+  <section id="replay" class="replay">
+    <div class="story-head">
+      <span id="replayTitle">Real GPS log</span>
+      <button id="replayExit">✕ Exit</button>
+    </div>
+    <canvas id="replayChart" title="Click to jump there"></canvas>
+    <input id="replaySlider" type="range" min="0" max="0" value="0" aria-label="Time in the recording">
+    <div class="story-nav">
+      <button id="replayPrev" title="Previous GPS outage">⏮ Outage</button>
+      <button id="replayPlay" class="primary">▶ Play</button>
+      <button id="replayNext" title="Next GPS outage">Outage ⏭</button>
+    </div>
+    <p id="replayText"></p>
+    <ul id="replayWitnesses" class="witnesses compact"></ul>
   </section>
 
   <!-- Lapland demo story -->
@@ -76,7 +96,7 @@
     </div>
     <div id="aimPanel" class="aim-panel">
       <div class="readout">
-        <div><small>Direction (true)</small><b id="aimBrg">—</b></div>
+        <div><small id="aimBrgLabel">Direction (true)</small><b id="aimBrg">—</b></div>
         <div><small>Up from horizon</small><b id="aimAlt">—</b></div>
       </div>
       <div class="aim-buttons">
@@ -137,6 +157,7 @@
   <script src="js/scenario-data.js"></script>
   <script src="js/landmark-data.js"></script>
   <script src="js/scenario.js"></script>
+  <script src="js/replay.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,15 +1,19 @@
 /* Alibi - phone sensors in the browser: which way the camera points (compass bearing and up-angle),
-   and a simple step counter. Works on Android Chrome and iPhone Safari (needs HTTPS). */
+   how far the phone has turned (gyroscope, which magnets can't fool), and a simple step counter.
+   Works on Android Chrome and iPhone Safari (needs HTTPS). */
 Alibi.sensors = (function () {
   'use strict';
 
   const G = Alibi.geo;
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-  const samples = [];            // recent { t, heading (magnetic, may be null), elev }
-  let started = false, lastEvent = 0;
+  // recent { t, heading (compass, magnetic, may be null), rel (gyroscope heading, arbitrary zero, may be null), elev }
+  const samples = [];
+  let started = false, lastEvent = 0, lastAbs = null, lastRel = null;
   let stepCb = null, stepOn = false, filt = 9.81, lastStep = 0, rising = false;
 
-  // Direction of the back camera from the W3C orientation angles (rotation matrix Rz(a)·Rx(b)·Ry(g))
+  // Direction of the back camera from the W3C orientation angles (rotation matrix Rz(a)·Rx(b)·Ry(g)).
+  // Android sends two streams: "absolute" (with the magnetic compass) and plain (gyroscope only, its own zero).
+  // iPhone sends one: alpha comes from the gyroscope, webkitCompassHeading from the compass.
   function onOrientation(e, absolute) {
     if (e.beta == null || e.gamma == null) return;
     const a = (e.alpha || 0) * D2R, b = e.beta * D2R, g = e.gamma * D2R;
@@ -18,15 +22,14 @@ Alibi.sensors = (function () {
     const N = -sA * sG + cA * sB * cG;
     const U = -cB * cG;
     const elev = Math.asin(Math.max(-1, Math.min(1, U))) * R2D;
-    let heading = null;
-    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) heading = e.webkitCompassHeading; // iPhone
-    else if (absolute) {
-      // phone lying flat: the camera looks at the ground, so use the top edge of the phone instead
-      heading = Math.abs(elev) > 65 ? G.wrap360(Math.atan2(-sA * cB, cA * cB) * R2D) : G.wrap360(Math.atan2(E, N) * R2D);
-    }
+    // phone lying flat: the camera looks at the ground, so use the top edge of the phone instead
+    const dir = Math.abs(elev) > 65 ? G.wrap360(Math.atan2(-sA * cB, cA * cB) * R2D) : G.wrap360(Math.atan2(E, N) * R2D);
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) { lastAbs = e.webkitCompassHeading; lastRel = dir; }
+    else if (absolute) lastAbs = dir;
+    else lastRel = dir;
     const now = performance.now();
     lastEvent = now;
-    samples.push({ t: now, heading, elev });
+    samples.push({ t: now, heading: lastAbs, rel: lastRel, elev });
     while (samples.length && now - samples[0].t > 3000) samples.shift();
   }
 
@@ -54,11 +57,8 @@ Alibi.sensors = (function () {
         await DeviceMotionEvent.requestPermission().catch(() => {});
       }
     } catch (e) { return false; }
-    if ('ondeviceorientationabsolute' in window) {
-      window.addEventListener('deviceorientationabsolute', (e) => onOrientation(e, true));
-    } else {
-      window.addEventListener('deviceorientation', (e) => onOrientation(e, e.absolute === true));
-    }
+    if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', (e) => onOrientation(e, true));
+    window.addEventListener('deviceorientation', (e) => onOrientation(e, e.absolute === true));
     window.addEventListener('devicemotion', onMotion);
     started = true;
     return true;
@@ -68,27 +68,26 @@ Alibi.sensors = (function () {
 
   function current() {
     const s = samples[samples.length - 1];
-    return s ? { heading: s.heading, elev: s.elev } : null;
+    return s ? { heading: s.heading, rel: s.rel, elev: s.elev } : null;
+  }
+
+  // circular mean and spread (degrees) of one heading field
+  function circular(win, key) {
+    let sx = 0, sy = 0, n = 0;
+    for (const s of win) if (s[key] != null) { sx += Math.sin(s[key] * D2R); sy += Math.cos(s[key] * D2R); n++; }
+    if (!n) return { mean: null, spread: null };
+    const len = Math.min(1, Math.hypot(sx, sy) / n);
+    return { mean: G.wrap360(Math.atan2(sx, sy) * R2D), spread: Math.sqrt(-2 * Math.log(Math.max(1e-9, len))) * R2D };
   }
 
   // Average of the last `ms` milliseconds; spread tells how steady the hand was
   function average(ms) {
     const now = performance.now(), win = samples.filter((s) => now - s.t <= ms);
     if (!win.length) return null;
-    let sx = 0, sy = 0, nh = 0, se = 0;
-    for (const s of win) {
-      se += s.elev;
-      if (s.heading != null) { sx += Math.sin(s.heading * D2R); sy += Math.cos(s.heading * D2R); nh++; }
-    }
-    const elev = se / win.length;
+    const elev = win.reduce((a, s) => a + s.elev, 0) / win.length;
     const elevSpread = Math.sqrt(win.reduce((a, s) => a + (s.elev - elev) ** 2, 0) / win.length);
-    let heading = null, headSpread = null;
-    if (nh) {
-      heading = G.wrap360(Math.atan2(sx, sy) * R2D);
-      const Rlen = Math.min(1, Math.hypot(sx, sy) / nh);
-      headSpread = Math.sqrt(-2 * Math.log(Math.max(1e-9, Rlen))) * R2D;
-    }
-    return { heading, elev, headSpread, elevSpread, n: win.length };
+    const h = circular(win, 'heading'), r = circular(win, 'rel');
+    return { heading: h.mean, headSpread: h.spread, rel: r.mean, relSpread: r.spread, elev, elevSpread, n: win.length };
   }
 
   function setSteps(on, cb) { stepOn = on; stepCb = cb; }

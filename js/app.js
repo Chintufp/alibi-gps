@@ -10,10 +10,10 @@
     drive: { limit: 50, maxSpeed: 60, verb: 'drive', rule: 'Cars stay on roads' },
     boat: { limit: 100, maxSpeed: 25, verb: 'sail', rule: 'Boats stay on water (lakes and rivers)' },
   };
-  const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', landmark: '#ea580c', tower: '#c026d3', sky: '#1e3a8a' };
-  const LABEL_SIDE = { gps: 'right', you: 'left', steps: 'bottom', landmark: 'top', tower: 'top', sky: 'top' };
+  const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', motion: '#059669', landmark: '#ea580c', angle: '#0891b2', tower: '#c026d3', sky: '#1e3a8a' };
+  const LABEL_SIDE = { gps: 'right', you: 'left', steps: 'bottom', motion: 'bottom', landmark: 'top', angle: 'top', tower: 'top', sky: 'top' };
   const BAD = '#dc2626', SUSPECT = '#d97706';
-  const ICONS = { gps: '🛰️', you: '📍', steps: '👣', landmark: '🗼', tower: '📡', sky: '✨' };
+  const ICONS = { gps: '🛰️', you: '📍', steps: '👣', motion: '🧭', landmark: '🗼', angle: '📐', tower: '📡', sky: '✨' };
   const STATE_TEXT = { agrees: '✓ agrees', ignored: '✗ ignored', suspect: '? suspect', unchecked: '– unchecked' };
 
   const state = {
@@ -22,17 +22,18 @@
     landmarks: [], suggestId: null,
     compassOffset: 0, compassCalibrated: false, steps: false,
     pending: null, youRadius: 1000,
-    story: null, result: null,
+    story: null, replay: null, result: null,
   };
 
   // ---------- map ----------
   const map = L.map('map', { zoomControl: false }).setView([61.4978, 23.7610], 14);   // Tampere
   L.control.zoom({ position: 'topright' }).addTo(map);
+  // crossOrigin lets the service worker keep the map pictures you have looked at for offline use
   const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19, crossOrigin: true, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   });
   const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    maxZoom: 17, subdomains: 'abc',
+    maxZoom: 17, subdomains: 'abc', crossOrigin: true,
     attribution: 'Map data © OpenStreetMap contributors, SRTM · style © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
   });
   street.addTo(map);
@@ -61,6 +62,7 @@
   }
   function allWitnesses() {
     if (state.story) return state.story.witnesses;
+    if (state.replay) return state.replay.witnesses;
     const g = gpsWitness();
     return g ? [g].concat(state.witnesses) : state.witnesses.slice();
   }
@@ -187,14 +189,20 @@
   map.on('click', (e) => {
     const what = state.pending;
     if (!what) return;
+    if (what === 'angleA' || what === 'angleB') {
+      // no mapped landmark there: use the tapped spot as one
+      const lm = addLandmark({ lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', kind: 'Landmark', icon: '📌' });
+      drawLandmarks();
+      onLandmarkClick(lm);
+      return;
+    }
     state.pending = null;
     hideToast();
     if (what === 'you') {
       addWitness({ type: 'you', kind: 'point', lat: e.latlng.lat, lon: e.latlng.lng, sigma: state.youRadius / 2,
         label: 'I’m about here', detail: `your guess · ±${G.fmtDist(state.youRadius)}` });
     } else if (what === 'landmark') {
-      const lm = { id: 'pick' + state.nextId++, lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', named: true, kind: 'Landmark', icon: '📌' };
-      state.landmarks.push(lm);
+      const lm = addLandmark({ lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', kind: 'Landmark', icon: '📌' });
       drawLandmarks();
       aimAtLandmark(lm);
     }
@@ -207,31 +215,89 @@
     $('toast').querySelector('span').textContent = msg;
   }
 
-  async function actLandmark() {
-    if (state.story) return;
-    if (state.landmarks.length) { offerPick('Tap a landmark you can see (🗼 ⛪ 🏭 ⛰️ 📡).'); collapseSheet(); return; }
-    if (map.getZoom() < 13) { offerPick('Zoom in to your area first, so I can search nearby.'); return; }
+  // Load landmarks around the map view once; returns false if there are none to tap
+  async function loadLandmarks() {
+    if (state.landmarks.length) return true;
+    if (map.getZoom() < 13) { offerPick('Zoom in to your area first, so I can search nearby.'); return false; }
     toast('Searching OpenStreetMap for towers, churches, chimneys and hill tops… (can take 20 s)', 0);
     try {
       state.landmarks = await OSM.landmarks(viewBounds());
       drawLandmarks();
-      offerPick(state.landmarks.length ? `Found ${state.landmarks.length}. Tap one you can see.` : 'No landmarks are mapped here.');
-      if (state.landmarks.length) collapseSheet();
+      schedule();
+      if (!state.landmarks.length) { offerPick('No landmarks are mapped here.'); return false; }
+      return true;
     } catch (e) {
       offerPick(`OpenStreetMap is busy right now (${e.message}).`);
+      return false;
     }
-    schedule();
+  }
+
+  async function actLandmark() {
+    if (state.story) return;
+    const had = state.landmarks.length;
+    if (!(await loadLandmarks())) return;
+    offerPick(had ? 'Tap a landmark you can see (🗼 ⛪ 🏭 ⛰️ 📡).' : `Found ${state.landmarks.length}. Tap one you can see.`);
+    collapseSheet();
+  }
+
+  // Tapping a landmark: normally aim at it; while measuring an angle, it picks A or B
+  function onLandmarkClick(lm) {
+    if (state.pending === 'angleA') {
+      state.angleA = lm;
+      state.pending = 'angleB';
+      angleToast(`A = ${lm.name}. Now tap landmark B, ideally 30–120° to the side of A.`);
+      return;
+    }
+    if (state.pending === 'angleB') {
+      if (lm === state.angleA) return;
+      state.pending = null;
+      hideToast();
+      aimAngle(state.angleA, lm);
+      return;
+    }
+    aimAtLandmark(lm);
+  }
+
+  // ---------- angle between two landmarks ----------
+  // Aim at A, turn on the spot to B: the gyroscope measures the turn. No compass is involved, so
+  // magnets, metal and a badly calibrated compass can't spoil it. All places that see A and B this
+  // far apart lie on a circle through A and B; two such angles (three landmarks) give a fix.
+  function angleToast(msg) {
+    toastHTML('<span></span><div class="chips"><button class="chip" data-cancel="1">Cancel</button></div>', 0);
+    $('toast').querySelector('span').textContent = msg;
+  }
+
+  async function actAngle() {
+    if (state.story) return;
+    if (!(await loadLandmarks())) return;
+    state.pending = 'angleA';
+    state.angleA = null;
+    angleToast('Angle between two landmarks: tap landmark A (or tap the map where it is).');
+    collapseSheet();
+  }
+
+  function aimAngle(a, b) {
+    openAim({
+      mode: 'angle', lm: a, a, b, step: 1, name: `${a.name} ↔ ${b.name}`, title: `1/2 · Aim at ${a.name}`,
+      hint: 'Put the red cross on A and press 📸. Then turn on the spot (don’t walk) to B and press 📸 again.',
+      onLock: (r) => {
+        addWitness({ type: 'angle', kind: 'angle', a: { lat: a.lat, lon: a.lon }, b: { lat: b.lat, lon: b.lon },
+          ang: r.value, sigma: r.sigma, photo: r.photo, lmIds: [a.id, b.id], label: `${a.name} ↔ ${b.name}`,
+          detail: `${r.source === 'tool' ? 'sextant' : 'gyroscope'} · ${Math.abs(r.value).toFixed(1)}° ${r.value >= 0 ? 'right' : 'left'} from A to B · ±${+(2 * r.sigma).toFixed(1)}°` });
+        drawLandmarks();
+      },
+    });
   }
 
   function drawLandmarks() {
     layer.marks.clearLayers();
-    if (state.story) return;
+    if (state.story || state.replay) return;
     for (const lm of state.landmarks) {
-      const used = state.witnesses.some((w) => w.lmId === lm.id);
+      const used = state.witnesses.some((w) => w.lmId === lm.id || (w.lmIds && w.lmIds.includes(lm.id)));
       const cls = 'lm-icon' + (used ? ' used' : '') + (lm.heard ? ' heard' : '') + (state.suggestId === lm.id ? ' suggest' : '');
       L.marker([lm.lat, lm.lon], { icon: L.divIcon({ className: cls, html: `<span>${lm.icon}</span>`, iconSize: [30, 30], iconAnchor: [15, 15] }) })
         .bindTooltip(lm.heard ? `${lm.name} · your phone hears it` : lm.name, { direction: 'top', offset: [0, -14] })
-        .on('click', () => aimAtLandmark(lm))
+        .on('click', () => onLandmarkClick(lm))
         .addTo(layer.marks);
     }
   }
@@ -322,6 +388,22 @@
     }
   }
 
+  // ---------- save an area for offline use ----------
+  // Saves a 6 × 6 km area around the map's centre (3 × 3 km with roads in Drive mode, since roads are big)
+  async function actSave() {
+    if (state.story) return;
+    const withRoads = state.mode === 'drive', c = map.getCenter();
+    const b = OSM.around(c.lat, c.lng, withRoads ? 1500 : 3000);
+    toast(`Saving landmarks, masts and lakes${withRoads ? ' and roads' : ''} around the map's centre for offline use… (can take a minute)`, 0);
+    try {
+      const r = await OSM.saveArea(b, withRoads);
+      toast(`Saved for offline: ${r.landmarks} landmarks (${r.masts} masts) and ${r.lakes} lakes${withRoads ? `, ${r.roads} roads` : ''}. ` +
+        'Map pictures are kept only for places you have already looked at.', 9000);
+    } catch (e) {
+      toast(`Could not save (${e.message}). Try again in a minute.`, 6000);
+    }
+  }
+
   // Add a landmark unless one is already within 30 m; returns the landmark that is on the map
   function addLandmark(lm) {
     const dup = state.landmarks.find((o) => G.dist(o.lat, o.lon, lm.lat, lm.lon) < 30);
@@ -345,6 +427,7 @@
     aim = Object.assign({ shot: null, source: 'phone' }, opts);
     $('aimTitle').textContent = opts.title;
     $('aimHint').textContent = opts.hint || '';
+    $('aimBrgLabel').textContent = opts.mode === 'angle' ? 'Turned from A (gyroscope)' : 'Direction (true)';
     $('aimPanel').classList.remove('hidden');
     $('review').classList.add('hidden');
     $('aim').classList.remove('hidden');
@@ -397,16 +480,23 @@
     return { az: G.bearing(from.lat, from.lon, aim.lm.lat, aim.lm.lon), alt: 0 };
   }
 
-  // What the phone measures right now: true bearing and angle above the horizon
+  // What the phone measures right now: true bearing (compass), gyroscope heading (its own zero), angle above the horizon
   function reading() {
-    if (sim.on) return { heading: sim.heading, elev: sim.pitch };
+    if (sim.on) return { heading: sim.heading, rel: sim.heading, elev: sim.pitch };
     const c = SEN.alive() ? SEN.current() : null;
-    return c ? { heading: c.heading != null ? correctedBearing(c.heading) : null, elev: c.elev } : null;
+    if (!c) return null;
+    const heading = c.heading != null ? correctedBearing(c.heading) : null;
+    return { heading, rel: c.rel != null ? c.rel : heading, elev: c.elev };
   }
 
   function readout() {
     const r = reading();
-    $('aimBrg').textContent = r && r.heading != null ? `${Math.round(r.heading)}° ${G.compass8(r.heading)}` : '—';
+    if (aim && aim.mode === 'angle') {
+      const turned = aim.step === 2 && r && r.rel != null && aim.first.yaw != null ? G.wrap180(r.rel - aim.first.yaw) : null;
+      $('aimBrg').textContent = turned == null ? (aim.step === 1 ? 'aim at A' : '—') : `${turned >= 0 ? '+' : ''}${turned.toFixed(1)}°`;
+    } else {
+      $('aimBrg').textContent = r && r.heading != null ? `${Math.round(r.heading)}° ${G.compass8(r.heading)}` : '—';
+    }
     $('aimAlt').textContent = r && r.elev != null ? `${r.elev.toFixed(1)}°` : '—';
     if (sim.on && aim) drawSimView();
     aimRaf = requestAnimationFrame(readout);
@@ -428,6 +518,7 @@
   // 📸 Take: freeze the picture and the reading, then let the user check and correct it
   function takeShot() {
     if (!aim) return;
+    if (aim.mode === 'angle') { takeAngleShot(); return; }
     let value = null, spread = 0;
     if (sim.on) value = aim.mode === 'bearing' ? sim.heading : sim.pitch;
     else {
@@ -449,8 +540,43 @@
     ctx.stroke();
   }
 
+  // Angle: the first 📸 remembers where A is (gyroscope heading), the second measures how far you turned to B
+  function takeAngleShot() {
+    let yaw = null, spread = 0;
+    if (sim.on) yaw = sim.heading;
+    else {
+      const avg = SEN.alive() ? SEN.average(1000) : null;
+      if (avg && avg.rel != null) { yaw = avg.rel; spread = avg.relSpread || 0; }
+      else if (avg && avg.heading != null) { yaw = correctedBearing(avg.heading); spread = avg.headSpread || 0; }
+    }
+    const shot = { yaw, spread, canvas: captureCanvas() };
+    if (aim.step === 1) {
+      aim.first = shot;
+      aim.step = 2;
+      aim.lm = aim.b;
+      $('aimTitle').textContent = `2/2 · Now turn to ${aim.b.name}`;
+      $('aimHint').textContent = 'Turn on the spot (don’t walk) until the red cross is on B, then 📸.';
+      toast(`A is saved. Now turn to ${aim.b.name}.`);
+      return;
+    }
+    const value = aim.first.yaw != null && yaw != null ? G.wrap180(yaw - aim.first.yaw) : null;
+    aim.shot = { photo: pairPhoto(aim.first.canvas, shot.canvas), value, spread: Math.hypot(aim.first.spread, spread), simulated: sim.on };
+    aim.source = 'phone';
+    showReview();
+  }
+
+  // Switching between camera and simulated view mid-angle mixes two different zeros: start the angle again
+  function restartAngle() {
+    if (!aim || aim.mode !== 'angle' || aim.step === 1) return;
+    aim.step = 1;
+    aim.lm = aim.a;
+    aim.first = null;
+    $('aimTitle').textContent = `1/2 · Aim at ${aim.a.name}`;
+    $('aimHint').textContent = 'Put the red cross on A and press 📸. Then turn on the spot (don’t walk) to B and press 📸 again.';
+  }
+
   // A 4:3 picture around the crosshair, from the camera or the simulated view
-  function capturePhoto() {
+  function captureCanvas() {
     const el = sim.on ? $('simView') : $('cam');
     const sw = sim.on ? el.width : el.videoWidth, sh = sim.on ? el.height : el.videoHeight;
     if (!sw || !sh) return null;
@@ -465,6 +591,32 @@
     const ctx = out.getContext('2d');
     ctx.drawImage(el, x0, y0, cw, ch, 0, 0, 320, 240);
     crosshair(ctx, (cx - x0) / cw * 320, (cy - y0) / ch * 240);
+    return out;
+  }
+
+  function capturePhoto() {
+    const c = captureCanvas();
+    try { return c ? c.toDataURL('image/jpeg', 0.75) : null; } catch (e) { return null; }
+  }
+
+  // The two shots of an angle side by side, A on the left and B on the right
+  function pairPhoto(c1, c2) {
+    const out = document.createElement('canvas');
+    out.width = 320; out.height = 240;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 320, 240);
+    [c1, c2].forEach((c, i) => { if (c) ctx.drawImage(c, 80, 0, 160, 240, i * 160, 0, 160, 240); });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(159, 0, 2, 240);
+    ctx.font = '700 16px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    for (const [t, x] of [['A', 6], ['B', 166]]) {
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fillRect(x - 2, 4, 22, 22);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(t, x + 3, 21);
+    }
     try { return out.toDataURL('image/jpeg', 0.75); } catch (e) { return null; }
   }
 
@@ -477,6 +629,10 @@
     elev: [
       { id: 'phone', label: '📱 Phone tilt', pm: () => 1 },
       { id: 'tool', label: '📐 Inclinometer / sextant', pm: () => 0.4 },
+    ],
+    angle: [
+      { id: 'phone', label: '📱 Phone gyroscope', pm: () => 2 },
+      { id: 'tool', label: '📐 Sextant / protractor', pm: () => 0.4 },
     ],
   };
 
@@ -493,8 +649,9 @@
     $('reviewImg').classList.toggle('hidden', !s.photo);
     $('reviewTitle').textContent = aim.name;
     $('reviewNote').textContent = s.value == null ? 'No sensor reading here, so type the value.'
-      : s.simulated ? 'Simulated phone reading. Fix it below, or switch to a hand compass.'
-        : 'Phone reading. Fix it below if you measured it better another way.';
+      : aim.mode === 'angle' ? (s.simulated ? 'Simulated gyroscope reading: how far you turned from A to B.' : 'Gyroscope reading: how far you turned from A to B.')
+        : s.simulated ? 'Simulated phone reading. Fix it below, or switch to a hand compass.'
+          : 'Phone reading. Fix it below if you measured it better another way.';
     $('reviewValue').value = s.value == null ? '' : s.value.toFixed(1);
     $('reviewPm').value = SOURCES[aim.mode][0].pm();
     $('reviewCalibRow').classList.toggle('hidden', !(aim.mode === 'bearing' && aim.calibrate && !s.simulated));
@@ -528,18 +685,23 @@
     updateReviewNote();
   }
 
-  // The value the engine will use: a true bearing, or an angle above the horizon
+  // The value the engine will use: a true bearing, an angle above the horizon, or a turn from A to B
   function reviewValue() {
     const v = parseFloat($('reviewValue').value);
     if (isNaN(v)) return null;
     if (aim.mode === 'bearing') return G.wrap360(aim.source === 'hand' ? v + declHere() : v);
+    if (aim.mode === 'angle') return G.wrap180(v);
     return v;
   }
 
   function updateReviewNote() {
     let txt;
     if (aim.mode === 'elev') txt = 'Angle above the horizon. Air bends starlight a little; that is corrected automatically.';
-    else if (aim.source === 'hand') {
+    else if (aim.mode === 'angle') {
+      const v = reviewValue();
+      txt = v == null ? 'Type the angle from A to B (plus = B is to the right of A).'
+        : `From A, turn ${Math.abs(v).toFixed(1)}° to the ${v >= 0 ? 'right' : 'left'} to see B. No compass involved, so magnets can't spoil it.`;
+    } else if (aim.source === 'hand') {
       const v = reviewValue();
       txt = v == null ? 'Type what your compass shows (magnetic north).'
         : `Compass reading + declination ${declHere().toFixed(1)}° = true bearing ${v.toFixed(1)}° (${G.compass8(v)}).`;
@@ -551,7 +713,7 @@
     const v = reviewValue();
     if (v == null) { toast('Type the angle first.'); return; }
     const pm = parseFloat($('reviewPm').value);
-    let sigma = Math.max(aim.mode === 'bearing' ? 0.25 : 0.05, (isNaN(pm) ? 2 : pm) / 2);
+    let sigma = Math.max({ bearing: 0.25, angle: 0.1, elev: 0.05 }[aim.mode], (isNaN(pm) ? 2 : pm) / 2);
     if (aim.source === 'phone' && aim.shot.value != null && !aim.shot.simulated) sigma = Math.max(sigma, aim.shot.spread);  // shaky hands count too
     const r = { value: v, sigma, source: aim.source, photo: aim.shot.photo, calibrate: $('reviewCalib').checked && aim.source === 'phone' };
     const cb = aim.onLock;
@@ -767,6 +929,7 @@
 
   // ---------- Lapland demo ----------
   function startStory() {
+    if (state.replay) exitReplay();
     state.pending = null;
     hideToast();
     state.story = { k: 0, witnesses: [], alert: null };
@@ -823,6 +986,143 @@
     schedule();
   }
 
+  // ---------- replay of the organisers' real GPS logs ----------
+  const RP = Alibi.replay;
+
+  function actReplay() {
+    openPicker('Replay a real GPS recording', Object.entries(RP.LOGS).map(([id, l]) => ({
+      html: `<b>${l.icon} ${l.label}</b><small>organisers’ data</small>`,
+      onPick: () => startReplay(id),
+    })), 'Recorded with Google’s GnssLogger app. Watch GPS drop out in tunnels and Alibi carry on with speed and direction.');
+  }
+
+  async function startReplay(id) {
+    toast('Loading the recording…', 0);
+    let data;
+    try { data = await RP.load(id); } catch (e) { toast('Could not load the recording (' + e.message + ').'); return; }
+    hideToast();
+    if (state.story) exitStory();
+    state.pending = null;
+    const log = RP.LOGS[id];
+    state.replay = { id, data, i: 0, playing: false, timer: 0, witnesses: [], alert: null, limit: log.mode === 'train' ? 100 : MODES.drive.limit };
+    document.body.classList.add('replay-mode');
+    drawLandmarks();
+    $('replayTitle').textContent = `${log.icon} ${log.label} · real GPS log`;
+    $('replaySlider').max = data.ep.length - 1;
+    layer.story.clearLayers();
+    L.polyline(data.track, { color: '#64748b', weight: 3, opacity: 0.55, interactive: false }).addTo(layer.story);
+    state.replay.done = L.polyline([], { color: '#0f172a', weight: 4, opacity: 0.85, interactive: false }).addTo(layer.story);
+    state.replay.exitMark = L.layerGroup().addTo(layer.story);
+    flyToBoundsVisible(L.latLngBounds(data.track));
+    replayStep(Math.max(0, data.ep.findIndex((e) => e.lat != null)));
+  }
+
+  function replayStep(i) {
+    const R = state.replay, ep = R.data.ep, e = ep[i];
+    R.i = i;
+    $('replaySlider').value = i;
+    const ws = [];
+    if (e.lat != null) {
+      const sg = Math.max(3, (e.acc || 10) / 1.5);
+      ws.push({ id: 'gps', type: 'gps', kind: 'point', lat: e.lat, lon: e.lon, sigma: sg, label: 'GPS',
+        detail: `${e.nsat} satellites · signal ${e.cn0 != null ? e.cn0.toFixed(0) + ' dB-Hz' : '–'} · ±${G.fmtDist(2 * sg)}` });
+    }
+    if (e.dr) {
+      ws.push({ id: 'motion', type: 'motion', kind: 'point', lat: e.dr.lat, lon: e.dr.lon, sigma: Math.max(3, e.dr.sigma),
+        label: e.dr.gyro ? 'Speed + gyroscope' : 'Speed + direction',
+        detail: `last fix + ${G.fmtDist(e.dr.since)} at ${Math.round(e.dr.spd * 3.6)} km/h · ±${G.fmtDist(2 * Math.max(3, e.dr.sigma))}` });
+    }
+    R.witnesses = ws;
+    const diag = RP.diagnose(e, R.data.hasAgc);
+    R.alert = diag ? '⚠ ' + diag.text : null;
+    // GPS just came back: does it land where dead reckoning said?
+    R.exitMark.clearLayers();
+    let back = '';
+    if (e.back) {
+      const ok = e.back.dist <= 3 * e.back.sigma, prev = ep[i - 1];
+      const how = prev && prev.dr && prev.dr.gyro ? 'speed + gyroscope' : 'speed + direction';
+      back = ` GPS is back after ${e.back.gap} s: ${G.fmtDist(e.back.dist)} from where ${how} said, after ${G.fmtDist(e.back.since)} without GPS` +
+        (ok ? ' (inside the ± circle ✓).' : ' (outside the ± circle: check it).');
+      L.marker([e.lat, e.lon], { icon: L.divIcon({ className: 'truth-icon', html: '<span>🎯</span><em>GPS back</em>', iconSize: [30, 30], iconAnchor: [15, 15] }), interactive: false }).addTo(R.exitMark);
+    }
+    const time = new Date(e.t * 1000).toISOString().slice(11, 19);
+    const spd = e.spd != null ? `${Math.round(e.spd * 3.6)} km/h` : e.dr ? `~${Math.round(e.dr.spd * 3.6)} km/h` : '';
+    $('replayText').textContent = `${time} UTC · ${spd} · ${e.nsat} satellites` +
+      (e.lat == null ? ` · GPS lost for ${e.lost} s.` : '.') + back;
+    R.done.setLatLngs(R.data.track.slice(0, ep.slice(0, i + 1).filter((x) => x.lat != null).length));
+    const pos = e.lat != null ? [e.lat, e.lon] : e.dr ? [e.dr.lat, e.dr.lon] : null;
+    if (pos && !map.getBounds().pad(-0.15).contains(pos)) map.panTo(pos, { animate: false });
+    drawReplayChart();
+    schedule();
+  }
+
+  // play: quick through good GPS, slow (2 s per tick) around outages, so the tunnels are what you watch
+  function toggleReplay() {
+    const R = state.replay;
+    R.playing = !R.playing;
+    $('replayPlay').textContent = R.playing ? '⏸ Pause' : '▶ Play';
+    clearInterval(R.timer);
+    if (!R.playing) return;
+    R.timer = setInterval(() => {
+      const ep = R.data.ep;
+      const near = R.data.outs.some((o) => R.i >= o.from - 8 && R.i <= o.to + 8);
+      const next = Math.min(ep.length - 1, R.i + (near ? 1 : 6));
+      replayStep(next);
+      if (next === ep.length - 1) toggleReplay();
+    }, 120);
+  }
+
+  function jumpOutage(dir) {
+    const R = state.replay, outs = R.data.outs;
+    if (!outs.length) { toast('No GPS outages in this recording.'); return; }
+    const o = dir > 0 ? outs.find((x) => x.from - 6 > R.i) || outs[0] : outs.slice().reverse().find((x) => x.from - 6 < R.i - 1) || outs[outs.length - 1];
+    replayStep(Math.max(0, o.from - 6));
+  }
+
+  function drawReplayChart() {
+    const R = state.replay, cv = $('replayChart'), dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth, H = 84;
+    if (!W) return;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ep = R.data.ep, n = ep.length, x = (i) => (i / Math.max(1, n - 1)) * W;
+    ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(220,38,38,.2)';
+    for (const o of R.data.outs) ctx.fillRect(x(o.from), 0, Math.max(2, x(o.to) - x(o.from)), H);
+    const line = (get, lo, hi, color) => {
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+      const step = Math.max(1, Math.floor(n / W));
+      let pen = false;
+      for (let i = 0; i < n; i += step) {
+        const v = get(ep[i]);
+        if (v == null) { pen = false; continue; }
+        const y = H - 4 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * (H - 18);
+        if (pen) ctx.lineTo(x(i), y); else { ctx.moveTo(x(i), y); pen = true; }
+      }
+      ctx.stroke();
+    };
+    line((e) => e.nsat, 0, 40, '#2563eb');
+    line((e) => e.cn0, 10, 50, '#ea580c');
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(x(R.i) - 1, 0, 2, H);
+    ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#2563eb'; ctx.fillText('satellites', 4, 11);
+    ctx.fillStyle = '#ea580c'; ctx.fillText('signal (dB-Hz)', 66, 11);
+    ctx.fillStyle = '#dc2626'; ctx.fillText('GPS lost', 158, 11);
+  }
+
+  function exitReplay() {
+    const R = state.replay;
+    if (!R) return;
+    clearInterval(R.timer);
+    state.replay = null;
+    layer.story.clearLayers();
+    document.body.classList.remove('replay-mode');
+    $('replayPlay').textContent = '▶ Play';
+    drawLandmarks();
+    schedule();
+  }
+
   // ---------- run the engine ----------
   let runTimer = 0;
   function schedule() { clearTimeout(runTimer); runTimer = setTimeout(run, 40); }
@@ -832,8 +1132,8 @@
     const mode = state.story ? 'walk' : state.mode;
     const t0 = performance.now();
     const res = ENG.analyze(ws, {
-      alertLimit: state.story ? 150 : MODES[mode].limit,
-      maskFor: (g) => OSM.maskFor(g, mode, state.story ? 'static' : 'live', schedule),
+      alertLimit: state.story ? 150 : state.replay ? state.replay.limit : MODES[mode].limit,
+      maskFor: state.replay ? null : (g) => OSM.maskFor(g, mode, state.story ? 'static' : 'live', schedule),
       fallbackBounds: viewBounds(),
     });
     res.ms = performance.now() - t0;
@@ -847,7 +1147,7 @@
     $('headline').textContent = res.headline;
     $('detail').textContent = res.detail;
     renderAlerts(res);
-    renderList(state.story ? $('storyWitnesses') : $('witnesses'), res, ws, !state.story);
+    renderList(state.story ? $('storyWitnesses') : state.replay ? $('replayWitnesses') : $('witnesses'), res, ws, !state.story && !state.replay);
     renderShapes(res, ws);
     renderHeat(res);
     renderEstimate(res);
@@ -859,7 +1159,8 @@
     box.innerHTML = '';
     const msgs = [];
     if (state.story && state.story.alert) msgs.push(state.story.alert);
-    if (!state.story && state.gps.jumpMsg && Date.now() < state.gps.suspectUntil) msgs.push(state.gps.jumpMsg);
+    if (state.replay && state.replay.alert) msgs.push(state.replay.alert);
+    if (!state.story && !state.replay && state.gps.jumpMsg && Date.now() < state.gps.suspectUntil) msgs.push(state.gps.jumpMsg);
     msgs.push(...(res.alerts || []));
     for (const m of msgs) {
       const d = document.createElement('div');
@@ -907,6 +1208,7 @@
       if (w.kind === 'point') drawPoint(w, style);
       else if (w.kind === 'bearing') drawWedge(w, style);
       else if (w.kind === 'range') drawRing(w, style);
+      else if (w.kind === 'angle') drawAngle(w, style);
       else if (w.kind === 'sky') drawBand(w, style);
     });
   }
@@ -950,6 +1252,36 @@
     }
     L.polygon(ri > 0 ? [outer, inner] : outer, Object.assign({}, style, { fillOpacity: 0.08, weight: 1.5 })).addTo(layer.shapes);
     anchorDot(w.lat, w.lon, style.color, `📡 ${w.label}`, w.type);
+  }
+
+  // Seeing A and B a fixed angle apart puts you on an arc of a circle through A and B (the inscribed
+  // angle theorem). Draw the band between the arcs for the angle ± 2 sigma, on the side you stand on.
+  function drawAngle(w, style) {
+    const m = { lat: (w.a.lat + w.b.lat) / 2, lon: (w.a.lon + w.b.lon) / 2 }, cm = Math.cos(m.lat * G.D2R);
+    const ax = (w.a.lon - m.lon) * G.M_PER_DEG * cm, ay = (w.a.lat - m.lat) * G.M_PER_DEG;
+    const bx = -ax, by = -ay, c = Math.hypot(ax, ay);
+    if (c < 1) return;
+    const ux = (bx - ax) / (2 * c), uy = (by - ay) / (2 * c);
+    const side = w.ang >= 0 ? 1 : -1;                  // B clockwise from A: you stand to the right of A→B
+    const nx = side * uy, ny = -side * ux;
+    const toLL = (x, y) => { const q = moved(w, m.lat + y / G.M_PER_DEG, m.lon + x / (G.M_PER_DEG * cm)); return [q.lat, q.lon]; };
+    const arc = (deg) => {
+      const al = Math.min(179, Math.max(1, Math.abs(deg))) * G.D2R;
+      const r = c / Math.sin(al), off = c / Math.tan(al), ox = nx * off, oy = ny * off;
+      const a0 = Math.atan2(ay - oy, ax - ox), a1 = Math.atan2(by - oy, bx - ox), far = Math.atan2(ny, nx);
+      const norm = (t) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      const ccw = norm(a1 - a0);
+      const sweep = norm(far - a0) < ccw ? ccw : ccw - 2 * Math.PI;   // go round through your side of AB
+      const pts = [];
+      for (let i = 0; i <= 64; i++) { const t = a0 + sweep * i / 64; pts.push(toLL(ox + r * Math.cos(t), oy + r * Math.sin(t))); }
+      return pts;
+    };
+    const wide = arc(Math.abs(w.ang) - 2 * w.sigma), narrow = arc(Math.abs(w.ang) + 2 * w.sigma);
+    L.polygon(wide.concat(narrow.slice().reverse()), Object.assign({}, style, { fillOpacity: 0.16, weight: 1 })).addTo(layer.shapes);
+    L.polyline(arc(Math.abs(w.ang)), { color: style.color, weight: 2, dashArray: '5 5', interactive: false }).addTo(layer.shapes);
+    const [la, lb] = w.label.split(' ↔ ');
+    anchorDot(w.a.lat, w.a.lon, style.color, `📐 A: ${la || 'A'}`, w.type);
+    anchorDot(w.b.lat, w.b.lon, style.color, `📐 B: ${lb || 'B'}`, w.type);
   }
 
   // A star seen at a given height is on a ring around the point where it is overhead: draw that band
@@ -1009,7 +1341,7 @@
 
   function renderEstimate(res) {
     layer.est.clearLayers();
-    if (!state.story && state.gps.spoof !== 'off' && state.gps.raw) {
+    if (!state.story && !state.replay && state.gps.spoof !== 'off' && state.gps.raw) {
       L.marker([state.gps.raw.lat, state.gps.raw.lon], {
         icon: L.divIcon({ className: '', html: '<div class="real-dot"></div>', iconSize: [12, 12], iconAnchor: [6, 6] }),
       }).bindTooltip('Your real GPS (Alibi cannot see this)', { direction: 'right', offset: [8, 0] }).addTo(layer.est);
@@ -1025,7 +1357,7 @@
   // Which landmark would shrink the search area the most? One whose line crosses the others squarely.
   function renderHint(res, ws) {
     let best = null;
-    if (!state.story && state.landmarks.length && res.est && res.light !== 'green') {
+    if (!state.story && !state.replay && state.landmarks.length && res.est && res.light !== 'green') {
       const used = new Set(ws.filter((w) => w.lmId).map((w) => w.lmId));
       const lines = ws.filter((w) => w.kind === 'bearing').map((w) => w.brg);
       for (const lm of state.landmarks) {
@@ -1065,7 +1397,7 @@
   // The part of the map not hidden behind the panels
   function visibleRect() {
     const size = map.getSize();
-    const panel = (state.story ? $('story') : $('sheet')).getBoundingClientRect();
+    const panel = (state.story ? $('story') : state.replay ? $('replay') : $('sheet')).getBoundingClientRect();
     if (window.innerWidth >= 900) return { left: panel.right + 10, top: 10, right: size.x - 50, bottom: size.y - 10 };
     const top = $('status').getBoundingClientRect().bottom + 8;
     return { left: 10, top, right: size.x - 50, bottom: Math.max(top + 120, panel.top - 8) };
@@ -1090,6 +1422,8 @@
   $('actLandmark').onclick = actLandmark;
   $('actSky').onclick = actSky;
   $('actTowers').onclick = actTowers;
+  $('actAngle').onclick = actAngle;
+  $('actSave').onclick = actSave;
   $('actSpoof').onclick = cycleSpoof;
   $('actStory').onclick = startStory;
   $('actClear').onclick = clearAll;
@@ -1099,16 +1433,27 @@
   $('storyNext').onclick = () => showStep(state.story.k === STORY.count - 1 ? 0 : state.story.k + 1);
   $('storyBack').onclick = () => showStep(Math.max(0, state.story.k - 1));
   $('storyExit').onclick = exitStory;
+  $('actReplay').onclick = actReplay;
+  $('replayExit').onclick = exitReplay;
+  $('replayPlay').onclick = toggleReplay;
+  $('replayPrev').onclick = () => jumpOutage(-1);
+  $('replayNext').onclick = () => jumpOutage(1);
+  $('replaySlider').addEventListener('input', (e) => replayStep(+e.target.value));
+  $('replayChart').addEventListener('click', (e) => {
+    const r = e.target.getBoundingClientRect(), n = state.replay.data.ep.length;
+    replayStep(Math.round((e.clientX - r.left) / r.width * (n - 1)));
+  });
   $('aimCancel').onclick = closeAim;
   $('aimLock').onclick = takeShot;
-  $('simToggle').onclick = () => setSim(!sim.on);
+  $('simToggle').onclick = () => { setSim(!sim.on); restartAngle(); };
   $('reviewRetake').onclick = () => { $('review').classList.add('hidden'); $('aimPanel').classList.remove('hidden'); };
   $('reviewAdd').onclick = addFromReview;
   $('reviewValue').addEventListener('input', updateReviewNote);
   document.querySelectorAll('#review [data-step]').forEach((b) => {
     b.onclick = () => {
       const v = (parseFloat($('reviewValue').value) || 0) + parseFloat(b.dataset.step);
-      $('reviewValue').value = (aim && aim.mode === 'bearing' ? G.wrap360(v) : v).toFixed(1);
+      const mode = aim && aim.mode;
+      $('reviewValue').value = (mode === 'bearing' ? G.wrap360(v) : mode === 'angle' ? G.wrap180(v) : v).toFixed(1);
       updateReviewNote();
     };
   });
@@ -1141,7 +1486,12 @@
   new ResizeObserver(() => document.documentElement.style.setProperty('--status-h', $('status').offsetHeight + 'px')).observe($('status'));
 
   // handle for the browser console (handy when testing or tweaking a demo)
-  Alibi.app = { state, map, run, addWitness };
+  Alibi.app = { state, map, run, addWitness, sim };
+
+  // Keep the app on the phone so it opens without a network too (see sw.js)
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  window.addEventListener('offline', () => toast('You are offline. Alibi keeps working with saved and built-in data.', 6000));
+  window.addEventListener('online', () => toast('Back online.'));
 
   refreshButtons();
   schedule();

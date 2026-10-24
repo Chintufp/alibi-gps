@@ -22,11 +22,12 @@ Alibi.osm = (function () {
     try { localStorage.setItem(CACHE_PREFIX + query, JSON.stringify(data)); } catch (e) { /* storage full or blocked */ }
   }
 
-  async function overpass(query) {
-    const cached = cacheGet(query);
+  // remember = false: don't keep the answer (big answers for the map rule would fill the phone's storage)
+  async function overpass(query, remember = true, waitMs = 60000) {
+    const cached = remember ? cacheGet(query) : null;
     if (cached) return cached;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
+    const timer = setTimeout(() => ctrl.abort(), waitMs);
     try {
       return await new Promise((resolve, reject) => {
         let next = 0, failed = 0, done = false;
@@ -40,7 +41,7 @@ Alibi.osm = (function () {
             body: 'data=' + encodeURIComponent(query),
           })
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
-            .then((d) => { if (!done) { done = true; cachePut(query, d); resolve(d); } })
+            .then((d) => { if (!done) { done = true; if (remember) cachePut(query, d); resolve(d); } })
             .catch(() => {
               clearTimeout(hedge);
               if (++failed === ENDPOINTS.length && !done) { done = true; reject(new Error('servers busy')); } else launch();
@@ -57,16 +58,16 @@ Alibi.osm = (function () {
 
   const bbox = (b) => `${b.s.toFixed(5)},${b.w.toFixed(5)},${b.n.toFixed(5)},${b.e.toFixed(5)}`;
 
-  // Landmarks shipped with the app (central Tampere and Helsinki), so demos there need no network.
-  // Used straight away when the middle of the search box lies in a shipped area (the edges of a big box
-  // may stick out a little); otherwise only when the servers fail.
+  // Landmarks shipped with the app (central Tampere and Helsinki) or saved on this device, so demos there
+  // need no network. Used straight away when the middle of the search box lies in such an area (the edges
+  // of a big box may stick out a little); otherwise only when the servers fail.
   function shipped(b) {
     const F = Alibi.landmarkData;
-    if (!F) return null;
+    const areas = (F ? F.areas : []).concat(saved);
     const cLat = (b.s + b.n) / 2, cLon = (b.w + b.e) / 2;
     let centred = false;
     const elements = [];
-    for (const a of F.areas) {
+    for (const a of areas) {
       if (b.n < a.s || b.s > a.n || b.e < a.w || b.w > a.e) continue;
       if (cLat >= a.s && cLat <= a.n && cLon >= a.w && cLon <= a.e) centred = true;
       for (const el of a.elements) {
@@ -103,14 +104,15 @@ Alibi.osm = (function () {
     { test: (t) => /church|cathedral/.test(t.building || '') || t.amenity === 'place_of_worship', label: 'Church', icon: '⛪' },
   ];
 
-  async function landmarks(b) {
-    const q = `[out:json][timeout:25];(
+  const landmarkQuery = (b, max) => `[out:json][timeout:60];(
       nwr["man_made"~"^(tower|water_tower|chimney|lighthouse|mast|communications_tower)$"](${bbox(b)});
       nwr["building"~"^(church|cathedral)$"](${bbox(b)});
       nwr["amenity"="place_of_worship"]["building"](${bbox(b)});
       node["natural"="peak"](${bbox(b)});
-    );out center tags 400;`;
-    const d = await query(q, b);
+    );out center tags ${max};`;
+
+  async function landmarks(b) {
+    const d = await query(landmarkQuery(b, 400), b);
     const out = [];
     for (const el of d.elements) {
       const c = centre(el), t = el.tags || {};
@@ -126,6 +128,9 @@ Alibi.osm = (function () {
   }
 
   // ---------- cell masts near a point (for the simulated tower witness) ----------
+  const isMast = (t) => /^(mast|communications_tower)$/.test(t.man_made || '') || /communication/.test(t['tower:type'] || '') ||
+    t['communication:mobile_phone'] === 'yes';
+
   async function masts(lat, lon, radius) {
     const box = around(lat, lon, radius), b = bbox(box);
     const q = `[out:json][timeout:25];(
@@ -134,8 +139,6 @@ Alibi.osm = (function () {
       nwr["man_made"~"^(mast|communications_tower)$"](${b});
     );out center tags 200;`;
     const d = await query(q, box);
-    const isMast = (t) => /^(mast|communications_tower)$/.test(t.man_made || '') || /communication/.test(t['tower:type'] || '') ||
-      t['communication:mobile_phone'] === 'yes';
     const out = [];
     for (const el of d.elements) {
       const c = centre(el);
@@ -174,6 +177,25 @@ Alibi.osm = (function () {
     return rings;
   }
 
+  // Lakes as polygons, or roads as lines, for a box
+  async function fetchFeatures(type, b, waitMs) {
+    const q = type === 'roads'
+      ? `[out:json][timeout:60];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"](${bbox(b)});out geom;`
+      : `[out:json][timeout:60];(way["natural"="water"](${bbox(b)});relation["natural"="water"](${bbox(b)});way["waterway"="riverbank"](${bbox(b)}););out geom;`;
+    const d = await overpass(q, false, waitMs);
+    const features = [], pts = (geom) => geom.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]);
+    for (const el of d.elements) {
+      if (type === 'roads') { if (el.geometry) features.push(pts(el.geometry)); continue; }
+      if (el.type === 'way' && el.geometry) features.push({ rings: [pts(el.geometry)] });
+      if (el.type === 'relation' && el.members) {
+        const outer = el.members.filter((m) => m.role !== 'inner' && m.geometry).map((m) => pts(m.geometry));
+        const inner = el.members.filter((m) => m.role === 'inner' && m.geometry).map((m) => pts(m.geometry));
+        features.push({ rings: assemble(outer).concat(assemble(inner)) });
+      }
+    }
+    return features;
+  }
+
   async function fetchArea(type, g, onLoaded) {
     const pad = 0.5;
     const b = {
@@ -183,25 +205,8 @@ Alibi.osm = (function () {
     const key = type + bbox(b);
     if (inflight[key]) return;
     inflight[key] = true;
-    const q = type === 'roads'
-      ? `[out:json][timeout:25];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"](${bbox(b)});out geom;`
-      : `[out:json][timeout:25];(way["natural"="water"](${bbox(b)});relation["natural"="water"](${bbox(b)});way["waterway"="riverbank"](${bbox(b)}););out geom;`;
     let features = [];
-    try {
-      const d = await overpass(q);
-      for (const el of d.elements) {
-        const pts = (geom) => geom.map((p) => [p.lat, p.lon]);
-        if (type === 'roads') { if (el.geometry) features.push(pts(el.geometry)); continue; }
-        if (el.type === 'way' && el.geometry) features.push({ rings: [pts(el.geometry)] });
-        if (el.type === 'relation' && el.members) {
-          const outer = el.members.filter((m) => m.role !== 'inner' && m.geometry).map((m) => pts(m.geometry));
-          const inner = el.members.filter((m) => m.role === 'inner' && m.geometry).map((m) => pts(m.geometry));
-          features.push({ rings: assemble(outer).concat(assemble(inner)) });
-        }
-      }
-    } catch (e) {
-      features = [];
-    }
+    try { features = await fetchFeatures(type, b); } catch (e) { features = []; }
     cache[type].push({ b, features });
     delete inflight[key];
     if (onLoaded) onLoaded();
@@ -261,5 +266,49 @@ Alibi.osm = (function () {
     return rasterize(g, feats, mode);
   }
 
-  return { landmarks, masts, maskFor, setStaticWater, around };
+  // ---------- areas saved on this device for offline use ("💾 Save offline") ----------
+  // Landmarks, masts and lakes (and roads in Drive mode) for a box, kept in the phone's storage.
+  // Map pictures are not downloaded in bulk: the free OpenStreetMap tile servers forbid that.
+  const SAVED_KEY = 'alibi-saved-areas';
+  const KEEP = ['name', 'man_made', 'natural', 'building', 'amenity', 'tower:type', 'communication:mobile_phone'];
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch (e) { saved = []; }
+
+  function useSaved(a) {
+    const b = { s: a.s, w: a.w, n: a.n, e: a.e };
+    if (a.water && a.water.length) cache.water.push({ b, features: a.water });
+    if (a.roads && a.roads.length) cache.roads.push({ b, features: a.roads });
+  }
+  saved.forEach(useSaved);
+
+  // Saving is something you wait for on purpose, so give the busy servers two minutes per part
+  async function saveArea(b, withRoads) {
+    const WAIT = 120000;
+    const d = await overpass(landmarkQuery(b, 3000), false, WAIT);
+    const elements = [];
+    for (const el of d.elements) {
+      const c = centre(el);
+      if (!c) continue;
+      const tags = {};
+      for (const k of KEEP) if (el.tags && el.tags[k] != null) tags[k] = el.tags[k];
+      elements.push({ type: el.type, id: el.id, lat: +c.lat.toFixed(6), lon: +c.lon.toFixed(6), tags });
+    }
+    const water = await fetchFeatures('water', b, WAIT);
+    const roads = withRoads ? await fetchFeatures('roads', b, WAIT) : [];
+    const area = { s: b.s, w: b.w, n: b.n, e: b.e, savedAt: Date.now(), elements, water, roads };
+    // keep the three newest areas, and drop the oldest if the phone's storage is full
+    let list = saved.concat([area]).slice(-3);
+    for (;;) {
+      try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); break; }
+      catch (e) {
+        if (list.length <= 1) throw new Error('not enough storage space on this device');
+        list = list.slice(1);
+      }
+    }
+    saved = list;
+    useSaved(area);
+    return { landmarks: elements.length, masts: elements.filter((el) => isMast(el.tags)).length, lakes: water.length, roads: roads.length };
+  }
+
+  return { landmarks, masts, maskFor, setStaticWater, around, saveArea };
 })();

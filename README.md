@@ -42,13 +42,41 @@ Click **🎬 Lapland demo**, then **Next** (or the → key). Real map data, simu
 | 2 | She walks 2 km. Steps + compass carry her last good position along; GPS agrees. | 🟢 |
 | 3 | A spoofer slowly drags GPS 650 m off. **Two** witnesses disagree: something is wrong, but who? | 🔴 |
 | 4 | A distant cell mast (simulated) fits both, so it still can't tell. Alibi says so honestly. | 🔴 |
-| 5 | She aims at **Kiilopää** fell top. Three witnesses outvote GPS, so GPS is ignored. | 🟡 |
-| 6 | She aims at **Ahopäät**. The lines cross where her steps say: ±139 m. | 🟢 |
+| 5 | She aims at **Kiilopää** fell top. Three witnesses outvote GPS, so GPS is ignored (±164 m). | 🟡 |
+| 6 | She aims at **Ahopäät**. The lines cross where her steps say: ±137 m. | 🟢 |
 | 7 | Night: GPS says **Murmansk**, 216 km away. Polaris and Vega agree with her steps, not GPS. | 🟡 |
 | 8 | Fog and jamming: only steps are left, so the uncertainty grows. The **map rule** cuts out the lake. | 🟡 |
 | 9 | The fog lifts: hut + two fell tops. Safe arrival. | 🟢 |
 
 The "Aino (the truth)" marker is only there for the audience; Alibi never sees it.
+
+---
+
+## Real GPS recordings (the organisers' data)
+
+Click **🚆 Real log** and pick a recording. These are the organisers' own recordings from an Android phone
+(Google's GnssLogger app): a 17-minute **train ride near Paris** with tunnels, and a 16-minute **drive in
+Espoo**. Press ▶ Play (it slows down around GPS outages), or jump between outages with ⏮ / ⏭.
+
+- **The chart** shows how many satellites the phone hears (blue) and how strong they are (orange). Red
+  stripes are times without a GPS position. Click it to jump there.
+- **When GPS drops out**, Alibi keeps going with the last speed and direction, turned by however much the
+  phone's **gyroscope** felt it turn, so it follows the curve inside a tunnel. The ± circle grows as it goes.
+- **It says why GPS is missing.** No satellites and a normal receiver gain means *blocked* (a tunnel).
+  Satellites heard fine but no position means a receiver hiccup. The receiver turning its gain down
+  would mean *possible jamming*.
+- **When GPS comes back**, Alibi checks it against its own estimate before trusting it again.
+
+Results on the train recording:
+
+| GPS outage | What Alibi says | Distance without GPS | Error when GPS comes back |
+|---|---|---|---|
+| 27 s | 33 satellites heard fine: a receiver hiccup, not jamming | 440 m | 16 m (inside ±88 m) |
+| 111 s, curved tunnel | no satellites, normal gain: blocked, not jammed | 2.5 km | **250 m** (inside ±369 m); 2.1 km without the gyroscope |
+| 7 s tunnel | blocked, not jammed | 186 m | 20 m (inside ±29 m) |
+
+Most of the 250 m comes from the train slowing down in the tunnel, not from the direction. The gyroscope
+drifts about 2.5° a minute, which is why the ± circle keeps growing the longer GPS is gone.
 
 ---
 
@@ -59,9 +87,12 @@ The "Aino (the truth)" marker is only there for the audience; Alibi never sees i
 | 🛰️ GPS | Uses your phone's GPS as one witness | real |
 | 📍 I'm about here | Tap the map where you think you are (±200 m / 1 km / 5 km) | real |
 | 🗼 Landmark | Loads towers, churches, chimneys and hill tops from OpenStreetMap. Tap one, put the camera's red cross on it and press 📸. Check the reading, then **Add witness**. The compass draws a line. You can also mark a landmark yourself. | real |
+| 📐 Angle A↔B | Tap two landmarks, aim at A and 📸, then turn on the spot to B and 📸. The **gyroscope** measures how far you turned, so there is no compass to be fooled by metal or magnets. The angle puts you on an arc through A and B; two angles (three landmarks) give a fix on their own: the classic surveyor's "three-point fix". | real |
 | ✨ Sky | Pick the Sun or a bright star, aim at it and press 📸. Its height above the horizon puts you on a band on the map. | real |
 | 📡 Cell towers | Shows the masts around you as landmarks. Only the ones your phone would hear (the nearest, plus neighbours up to twice as far, at most 4) get a pink ring: a narrow one for the serving cell (timing advance) and wide ones for neighbours (signal strength). Browsers can't read cell towers, so which ones you "hear" is made up from your real position. | simulated |
 | 😈 Spoof GPS | Simulates an attack: first a slow drag (3 m/s), then a 120 km jump. The grey dot is your real GPS. | simulated |
+| 💾 Save offline | Saves the landmarks, masts and lakes for 6 × 6 km around the map's centre onto the phone (roads too in Drive mode), so they work with no network. | real |
+| 🚆 Real log | Replays the organisers' own GPS recordings (see below). | real data |
 
 **Check every reading before it counts.** After 📸 you see the photo and the reading, and you can:
 - nudge it (±1°, ±0.1°) or type a better value;
@@ -88,11 +119,13 @@ Lapland demo uses the same pictures for its witnesses.
 ## How it works (in plain words)
 
 1. **Every witness draws a shape.** GPS, your guess and your steps are circles. A landmark gives a line,
-   because you are somewhere along the line you aimed along. A cell tower gives a ring. A star gives a band:
-   everywhere on Earth where that star is at that height right now.
+   because you are somewhere along the line you aimed along. An angle between two landmarks gives an arc
+   through both of them. A cell tower gives a ring. A star gives a band: everywhere on Earth where that star
+   is at that height right now.
 2. **Where the shapes overlap is where you are.** Alibi lays a grid over the map and multiplies the shapes
-   (a Bayesian grid filter), zooming in step by step. The orange glow is the result. The dashed circle holds
-   95 % of it, and that radius is the **± number**.
+   (a Bayesian grid filter), zooming in step by step. The orange glow is the result. The dashed circle around
+   Alibi's best guess holds 95 % of it, and its radius is the **± number**. Like a GPS receiver's
+   "protection level", it stays honest for long thin shapes: one compass line alone gives a large ±.
 3. **Catching the liar.** For each witness Alibi predicts what it *should* say from all the other witnesses.
    If it is far outside what they allow (less than 0.1 % likely), it fails. Alibi then looks for the one
    witness whose removal makes everyone else agree, and ignores it. This is the idea behind receiver
@@ -118,13 +151,14 @@ almanac formula. A star's height is corrected for atmospheric refraction.
 Needs no network at all: the stars and the Sun (the catalogue and maths are built in), your steps and
 compass, your own guess, and the whole Lapland demo except the background map pictures.
 
-Works offline once loaded: landmarks for central Tampere and Helsinki (built in), and any place you have
-loaded landmarks for before (kept on the phone).
+Works offline once you have opened the app once: the app itself (kept by a service worker, `sw.js`), the
+map pictures of places you have already looked at, landmarks for central Tampere and Helsinki (built in),
+areas you saved with **💾 Save offline**, and any place you loaded landmarks for before.
 
-A real app would let you **download a region before the trip**, like offline maps in hiking apps:
+A real app would let you **download a whole region before the trip**, like offline maps in hiking apps:
 background map, landmarks, lakes and roads for, say, all of Lapland (a few tens of MB), refreshed about
 monthly, since towers and lakes rarely move. The National Land Survey of Finland and OpenStreetMap both
-publish this data openly. The demo does not bulk-download map tiles, because the free OpenStreetMap tile
+publish this data openly. The demo does not bulk-download map pictures, because the free OpenStreetMap tile
 servers forbid it; a real app would host its own.
 
 ---
@@ -135,6 +169,7 @@ servers forbid it; a real app would host its own.
 |---|---|---|
 | GPS | 5–10 m | jammed or spoofed (that's the point) |
 | Landmark line | 2–5° (≈ 50–200 m at 1–3 km) | fog or darkness, or metal near the phone confusing the compass |
+| Angle A↔B (gyroscope) | 1–2° | you walk or tilt the phone a lot between the two shots; the gyroscope drifts slowly, so take both shots within a few seconds |
 | Cell tower ring | ±100–300 m (serving cell) to ±0.5–5 km (neighbours) | wilderness, open sea; a mast that is mapped in the wrong place; a fake base station (possible, but much harder than faking GPS). Base stations also use GPS timing, and jamming in Finland has hit mobile networks too. |
 | Sky band | ±0.5–1° of tilt ≈ ±50–100 km | clouds. Catches big lies, but can't steer you between rocks. |
 | Steps + compass | error grows ~5–10 % of the distance walked | a long time without another witness |
@@ -165,6 +200,8 @@ and Galileo OSNMA authentication as one more witness.
 | `js/app.js` | map, buttons, aiming view, demo player |
 | `js/scenario.js`, `js/scenario-data.js` | the Lapland demo and its trail, fells and lakes |
 | `js/landmark-data.js` | built-in landmarks for central Tampere and Helsinki |
+| `js/replay.js`, `data/train.json`, `data/car.json` | replay of the organisers' GPS recordings: dead reckoning and outage diagnosis |
+| `sw.js` | service worker: keeps the app and viewed map pictures for offline use |
 
 **Credits:** map data © OpenStreetMap contributors (ODbL); topo map style © OpenTopoMap (CC-BY-SA); maps
 drawn with Leaflet; magnetic declination from the World Magnetic Model 2025 (via the British Geological

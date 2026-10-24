@@ -80,7 +80,7 @@ Alibi.scenario = (function () {
 
   // ---------- the story ----------
   const SPOOF = (t) => spoofedGps(t, 650, 120);
-  const STEPS_3KM = (t) => steps(t, -25, 20, 90, 1000);
+  const STEPS_3KM = (t) => steps(t, -25, 20, 80, 1000);
 
   const STEPS = [
     {

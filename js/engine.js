@@ -88,6 +88,28 @@ Alibi.engine = (function () {
         e[k] = err; v[k] = varK;
         ll[k] = -0.5 * err * err / varK - 0.5 * far * far;
       }
+    } else if (w.kind === 'angle') {
+      // the angle between two landmarks seen from the cell, clockwise from A to B (a gyroscope reading:
+      // no compass involved). All places with the same angle lie on a circle through A and B.
+      const s2a = w.sigma * w.sigma, ca = Math.cos(w.a.lat * D2R), cb = Math.cos(w.b.lat * D2R), slop = Math.sqrt(slop2);
+      for (let k = 0; k < N; k++) {
+        const la = cellLat(k), lo = cellLon(k);
+        let dA, dB, bA, bB;
+        if (local) {
+          const ax = (w.a.lon - lo) * M * ca, ay = (w.a.lat - la) * M, bx = (w.b.lon - lo) * M * cb, by = (w.b.lat - la) * M;
+          dA = Math.hypot(ax, ay); dB = Math.hypot(bx, by);
+          bA = Math.atan2(ax, ay) * R2D; bB = Math.atan2(bx, by) * R2D;
+        } else {
+          dA = G.dist(la, lo, w.a.lat, w.a.lon); dB = G.dist(la, lo, w.b.lat, w.b.lon);
+          bA = G.bearing(la, lo, w.a.lat, w.a.lon); bB = G.bearing(la, lo, w.b.lat, w.b.lon);
+        }
+        const err = G.wrap180(G.wrap180(bB - bA) - w.ang);
+        const sa = slop / Math.max(dA, 20) * R2D, sb = slop / Math.max(dB, 20) * R2D;
+        const varK = s2a + sa * sa + sb * sb, dMax = Math.max(dA, dB);
+        const far = dMax > VIS_RANGE ? (dMax - VIS_RANGE) / 5000 : 0;
+        e[k] = err; v[k] = varK;
+        ll[k] = -0.5 * err * err / varK - 0.5 * far * far;
+      }
     } else if (w.kind === 'range') {
       const s2r = w.sigma * w.sigma + slop2, cw = Math.cos(w.lat * D2R);
       for (let k = 0; k < N; k++) {
@@ -226,6 +248,7 @@ Alibi.engine = (function () {
         const c = G.offset(w.lat, w.lon, mv.dE, mv.dN);
         add(c.lat, c.lon, 3 * Math.hypot(w.sigma, mv.sigma) + 100);
       } else if (w.kind === 'bearing') add(w.lat, w.lon, VIS_RANGE + walked);
+      else if (w.kind === 'angle') { add(w.a.lat, w.a.lon, VIS_RANGE + walked); add(w.b.lat, w.b.lon, VIS_RANGE + walked); }
       else if (w.kind === 'range') add(w.lat, w.lon, w.r + 3 * w.sigma + walked);
     }
     return b;
@@ -248,14 +271,20 @@ Alibi.engine = (function () {
     return { s: s - padLat, n: n + padLat, w: w - padLon, e: e + padLon };
   }
 
-  // Best guess (most likely cell) and the radius of a circle with the same area as the 95 % region
+  // Best guess (most likely cell) and the radius of the circle around it that holds 95 % of the
+  // probability. Like a receiver's protection level, this stays honest for long thin shapes too
+  // (one compass line or one angle), where an equal-area circle would look far too small.
   function summarize(g, P) {
     let kBest = 0;
     for (let k = 1; k < g.N; k++) if (density(g, P, k) > density(g, P, kBest)) kBest = k;
-    const order = Array.from({ length: g.N }, (_, k) => k).sort((a, b) => density(g, P, b) - density(g, P, a));
-    let acc = 0, area = 0;
-    for (const k of order) { acc += P[k]; area += g.area[k]; if (acc >= 0.95) break; }
-    return { est: { lat: g.lat[kBest], lon: g.lon[kBest] }, r95: Math.sqrt(area / Math.PI) };
+    const la0 = g.lat[kBest], lo0 = g.lon[kBest], c0 = Math.cos(la0 * D2R);
+    const d = new Float64Array(g.N);
+    for (let k = 0; k < g.N; k++) d[k] = Math.hypot((g.lon[k] - lo0) * M * c0, (g.lat[k] - la0) * M);
+    const order = Array.from({ length: g.N }, (_, k) => k).sort((a, b) => d[a] - d[b]);
+    let acc = 0, r95 = 0;
+    for (const k of order) { acc += P[k]; r95 = d[k]; if (acc >= 0.95) break; }
+    // a cell is not a point: never claim better than about half a cell
+    return { est: { lat: la0, lon: lo0 }, r95: Math.max(r95, 0.5 * g.cellM) };
   }
 
   function verdict(res, ws, limit) {
