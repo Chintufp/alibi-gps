@@ -4,10 +4,10 @@ Alibi.osm = (function () {
   'use strict';
 
   const G = Alibi.geo;
+  // Only servers in the EU: the request contains the area you are in, so it should not go just anywhere
   const ENDPOINTS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   ];
 
   // Public Overpass servers can be slow: ask one, and if it has not answered in 8 s (or fails), ask the
@@ -99,29 +99,46 @@ Alibi.osm = (function () {
     Lighthouse: ['fa-tower-observation', ''], 'Water tower': ['fa-tower-observation', ''],
     Tower: ['fa-tower-observation', ''], Chimney: ['fa-industry', ''], Mast: ['fa-tower-cell', ''],
     'Hill top': ['fa-mountain', ''], Church: ['fa-church', ''], Hut: ['fa-house-chimney', ''],
-    Landmark: ['fa-thumbtack', ''],
+    'Wind turbine': ['fa-fan', ''], 'Tall building': ['fa-building', ''], Beacon: ['fa-anchor', ''],
+    'Ski jump': ['fa-person-skiing', ''], Landmark: ['fa-thumbtack', ''],
   };
   const iconOf = (kind) => { const i = ICONS[kind] || ICONS.Landmark; return { cls: i[0], glyph: i[1] }; };
 
+  // In order of how good they are to aim at: tall, thin, easy to recognise and mapped as one point.
+  // Masts come last: there are many and they look alike.
   const KINDS = [
+    { test: (t) => t.natural === 'peak', label: 'Hill top' },
     { test: (t) => t.man_made === 'lighthouse', label: 'Lighthouse' },
+    { test: (t) => /church|cathedral/.test(t.building || '') || t.amenity === 'place_of_worship', label: 'Church' },
     { test: (t) => t.man_made === 'water_tower', label: 'Water tower' },
     { test: (t) => t.man_made === 'chimney', label: 'Chimney' },
-    { test: (t) => t.man_made === 'mast' || t.man_made === 'communications_tower', label: 'Mast' },
+    { test: (t) => t.power === 'generator' && t['generator:source'] === 'wind', label: 'Wind turbine' },
+    { test: (t) => t['piste:type'] === 'ski_jump' || t.sport === 'ski_jumping', label: 'Ski jump' },
     { test: (t) => t.man_made === 'tower', label: 'Tower' },
-    { test: (t) => t.natural === 'peak', label: 'Hill top' },
-    { test: (t) => /church|cathedral/.test(t.building || '') || t.amenity === 'place_of_worship', label: 'Church' },
+    { test: (t) => /^(wilderness_hut|alpine_hut)$/.test(t.tourism || '') || (t.amenity === 'shelter' && /^(lean_to|basic_hut)$/.test(t.shelter_type || '')), label: 'Hut' },
+    { test: (t) => t.man_made === 'beacon' || /^(beacon_|light_major|light_minor)/.test(t['seamark:type'] || ''), label: 'Beacon' },
+    { test: (t) => !!t.building && (parseFloat(t.height) >= 40 || parseInt(t['building:levels'], 10) >= 12), label: 'Tall building' },
+    { test: (t) => t.man_made === 'mast' || t.man_made === 'communications_tower', label: 'Mast' },
   ];
+  const RANK = Object.fromEntries(KINDS.map((k, i) => [k.label, i]));
 
   const landmarkQuery = (b, max) => `[out:json][timeout:60];(
-      nwr["man_made"~"^(tower|water_tower|chimney|lighthouse|mast|communications_tower)$"](${bbox(b)});
+      nwr["man_made"~"^(tower|water_tower|chimney|lighthouse|mast|communications_tower|beacon)$"](${bbox(b)});
       nwr["building"~"^(church|cathedral)$"](${bbox(b)});
       nwr["amenity"="place_of_worship"]["building"](${bbox(b)});
       node["natural"="peak"](${bbox(b)});
+      node["power"="generator"]["generator:source"="wind"](${bbox(b)});
+      nwr["piste:type"="ski_jump"](${bbox(b)});
+      nwr["sport"="ski_jumping"](${bbox(b)});
+      nwr["tourism"~"^(wilderness_hut|alpine_hut)$"](${bbox(b)});
+      nwr["amenity"="shelter"]["shelter_type"~"^(lean_to|basic_hut)$"](${bbox(b)});
+      node["seamark:type"~"^(beacon_|light_major|light_minor)"](${bbox(b)});
+      nwr["building"]["building:levels"~"^(1[2-9]|[2-9][0-9])$"](${bbox(b)});
+      nwr["building"]["height"~"^([4-9][0-9]|[1-9][0-9][0-9])"](${bbox(b)});
     );out center tags ${max};`;
 
   async function landmarks(b) {
-    const d = await query(landmarkQuery(b, 400), b);
+    const d = await query(landmarkQuery(b, 800), b);
     const out = [];
     for (const el of d.elements) {
       const c = centre(el), t = el.tags || {};
@@ -132,7 +149,8 @@ Alibi.osm = (function () {
       if (dup) { if (!dup.named && t.name) Object.assign(dup, { name: t.name, named: true }); continue; }
       out.push({ id: el.type + el.id, lat: c.lat, lon: c.lon, name: t.name || kind.label, named: !!t.name, kind: kind.label });
     }
-    return out.sort((a, b) => b.named - a.named).slice(0, 100);
+    // the best kinds first, named before unnamed, so masts can't crowd out hill tops and churches
+    return out.sort((a, b) => (RANK[a.kind] - RANK[b.kind]) || (b.named - a.named)).slice(0, 150);
   }
 
   // ---------- cell masts near a point (for the simulated tower witness) ----------
@@ -189,11 +207,13 @@ Alibi.osm = (function () {
   async function fetchFeatures(type, b, waitMs) {
     const q = type === 'roads'
       ? `[out:json][timeout:60];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"](${bbox(b)});out geom;`
-      : `[out:json][timeout:60];(way["natural"="water"](${bbox(b)});relation["natural"="water"](${bbox(b)});way["waterway"="riverbank"](${bbox(b)}););out geom;`;
+      : `[out:json][timeout:60];(way["natural"="water"](${bbox(b)});relation["natural"="water"](${bbox(b)});way["waterway"="riverbank"](${bbox(b)});way["natural"="coastline"](${bbox(b)}););out geom;`;
     const d = await overpass(q, false, waitMs);
     const features = [], pts = (geom) => geom.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]);
     for (const el of d.elements) {
       if (type === 'roads') { if (el.geometry) features.push(pts(el.geometry)); continue; }
+      // the sea is not mapped as a shape, only its coastline: remember that this area has some sea
+      if (el.tags && el.tags.natural === 'coastline') { if (!features.some((f) => f.coast)) features.push({ coast: true, rings: [] }); continue; }
       if (el.type === 'way' && el.geometry) features.push({ rings: [pts(el.geometry)] });
       if (el.type === 'relation' && el.members) {
         const outer = el.members.filter((m) => m.role !== 'inner' && m.geometry).map((m) => pts(m.geometry));
@@ -271,14 +291,18 @@ Alibi.osm = (function () {
       feats = hit.features;
     }
     if (!feats.length) return null;
-    return rasterize(g, feats, mode);
+    // Boat mode only knows lakes and rivers as shapes, so near the sea the "boats stay on water" rule is off
+    // (open sea would look like land). Turning coastlines into sea shapes is a next step.
+    if (mode === 'boat' && feats.some((f) => f.coast)) return null;
+    return rasterize(g, feats.filter((f) => !f.coast), mode);
   }
 
   // ---------- areas saved on this device for offline use ("Save offline") ----------
   // Landmarks, masts and lakes (and roads in Drive mode) for a box, kept in the phone's storage.
   // Map pictures are not downloaded in bulk: the free OpenStreetMap tile servers forbid that.
   const SAVED_KEY = 'alibi-saved-areas';
-  const KEEP = ['name', 'man_made', 'natural', 'building', 'amenity', 'tower:type', 'communication:mobile_phone'];
+  const KEEP = ['name', 'man_made', 'natural', 'building', 'amenity', 'tower:type', 'communication:mobile_phone', 'power',
+    'generator:source', 'piste:type', 'sport', 'tourism', 'shelter_type', 'seamark:type', 'height', 'building:levels'];
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch (e) { saved = []; }
 

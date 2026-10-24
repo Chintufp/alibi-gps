@@ -8,17 +8,31 @@
   <meta name="theme-color" content="#0f172a">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=7">
+  <link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
   <div id="map"></div>
 
-  <header id="status" class="status">
+  <header id="status" class="status intro">
     <div id="light" class="light"></div>
     <div class="status-text">
       <div id="headline">Alibi</div>
       <div id="detail">GPS is just one witness. Add more to check it.</div>
       <div id="hint"></div>
+      <!-- first visit: what Alibi is, until the first witness arrives -->
+      <div id="intro">
+        <div class="intro-title">Alibi: where am I, really?</div>
+        <p>GPS is just one <b>witness</b> to where you are, and it can be jammed or faked. Landmarks you aim the
+          camera at, the Sun and stars, cell towers, your steps and your own guess are more witnesses. Alibi shows
+          where they agree and catches a lying GPS.</p>
+        <p class="intro-key"><b>±50 m</b> means you are within 50 m, even if one witness is lying (99 % sure).<br>
+          The light: <span class="kv"><span class="kd green"></span>they agree</span>
+          <span class="kv"><span class="kd yellow"></span>add a witness</span> <span class="kv"><span class="kd red"></span>they disagree</span></p>
+        <div class="intro-buttons">
+          <button id="introDemo" class="primary"><i class="fa-solid fa-person-hiking"></i> Watch the Lapland demo</button>
+          <button id="introSelf">Try it here</button>
+        </div>
+      </div>
     </div>
   </header>
   <div id="alerts" class="alerts"></div>
@@ -32,7 +46,7 @@
       <button class="mode" data-mode="boat"><i class="fa-solid fa-sailboat"></i> Boat</button>
     </div>
     <div class="actions">
-      <button class="act" id="actGps"><i class="fa-solid fa-satellite"></i>GPS</button>
+      <button class="act" id="actGps"><i class="fa-solid fa-satellite"></i><em id="gpsLabel">GPS</em></button>
       <button class="act" id="actYou"><i class="fa-solid fa-location-dot"></i>I’m about here</button>
       <button class="act" id="actLandmark"><i class="fa-solid fa-tower-observation"></i>Landmark</button>
       <button class="act" id="actAngle"><i class="fa-solid fa-compass-drafting"></i>Angle A↔B</button>
@@ -57,12 +71,19 @@
       <span id="replayTitle">Real GPS log</span>
       <button id="replayExit"><i class="fa-solid fa-xmark"></i> Exit</button>
     </div>
+    <p id="replayNote" class="replay-note"></p>
+    <div id="replayCard" class="replay-card hidden" role="status" aria-live="polite">
+      <b id="replayCardTitle"></b>
+      <p id="replayCardText"></p>
+      <button id="replayContinue" class="primary"><i class="fa-solid fa-play"></i> Continue</button>
+    </div>
     <canvas id="replayChart" title="Click to jump there"></canvas>
     <input id="replaySlider" type="range" min="0" max="0" value="0" aria-label="Time in the recording">
-    <div class="story-nav">
-      <button id="replayPrev" title="Previous GPS outage"><i class="fa-solid fa-backward-step"></i> Outage</button>
+    <div class="story-nav replay-nav">
+      <button id="replayPrev" title="Previous outage or attack"><i class="fa-solid fa-backward-step"></i> Prev</button>
       <button id="replayPlay" class="primary"><i class="fa-solid fa-play"></i> Play</button>
-      <button id="replayNext" title="Next GPS outage">Outage <i class="fa-solid fa-forward-step"></i></button>
+      <button id="replaySkip" title="Jump to the end of this outage, where GPS comes back (or to the next result)"><i class="fa-solid fa-forward-fast"></i> Skip</button>
+      <button id="replayNext" title="Next outage or attack">Next <i class="fa-solid fa-forward-step"></i></button>
     </div>
     <p id="replayText"></p>
     <ul id="replayWitnesses" class="witnesses compact"></ul>
@@ -88,7 +109,7 @@
     <video id="cam" playsinline autoplay muted></video>
     <canvas id="simView" class="hidden"></canvas>
     <div class="cross"></div>
-    <div class="aim-top">
+    <div class="aim-top" id="aimTop">
       <div class="aim-top-row">
         <b id="aimTitle"></b>
         <button id="simToggle" class="sim-toggle"><i class="fa-solid fa-gamepad"></i> Simulated view</button>
@@ -150,15 +171,15 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/geo.js?v=7"></script>
-  <script src="js/sky.js?v=7"></script>
-  <script src="js/engine.js?v=7"></script>
-  <script src="js/osm.js?v=7"></script>
-  <script src="js/sensors.js?v=7"></script>
-  <script src="js/scenario-data.js?v=7"></script>
-  <script src="js/landmark-data.js?v=7"></script>
-  <script src="js/scenario.js?v=7"></script>
-  <script src="js/replay.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="js/geo.js?v=8"></script>
+  <script src="js/sky.js?v=8"></script>
+  <script src="js/engine.js?v=8"></script>
+  <script src="js/osm.js?v=8"></script>
+  <script src="js/sensors.js?v=8"></script>
+  <script src="js/scenario-data.js?v=8"></script>
+  <script src="js/landmark-data.js?v=8"></script>
+  <script src="js/scenario.js?v=8"></script>
+  <script src="js/replay.js?v=8"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>

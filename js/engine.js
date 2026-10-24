@@ -20,6 +20,16 @@ Alibi.engine = (function () {
   const LOCAL = 50000;        // below this size, flat-Earth maths is accurate enough and much faster
   const ZERO_MOVE = { dE: 0, dN: 0, sigma: 0 };
 
+  // How likely each kind of witness is to be wrong by more than its own ± says (a rough judgement per
+  // reading, not a measurement): GPS can be jammed or spoofed, a landmark or star can be mixed up with
+  // another, a guess can be off, a mast can be mapped in the wrong place. Steps and dead reckoning don't
+  // jump, they drift, and their ± already grows with the distance. Every kind at least MONITOR likely
+  // gets its own "what if this one is lying?" check in the protection level.
+  const FAULT = { gps: 1e-2, you: 1e-2, landmark: 1e-2, angle: 1e-2, sky: 1e-2, tower: 1e-2, steps: 1e-3, motion: 1e-3 };
+  const MONITOR = 5e-3;
+  const PL_FRAC = 0.99;        // the protection level holds 99 % of where you could be, under every hypothesis
+  const monitored = (w) => (FAULT[w.type] == null ? 1e-2 : FAULT[w.type]) >= MONITOR;
+
   // ---------- search grid (square cells, rows evenly spaced in Web Mercator like the map) ----------
   function makeGrid(b) {
     const latc = (b.s + b.n) / 2, lonc = (b.w + b.e) / 2, cosc = Math.cos(latc * D2R);
@@ -51,8 +61,12 @@ Alibi.engine = (function () {
     const local = g.size < LOCAL;
 
     // where you were when the witness was taken = where you are now minus what you walked since
-    const cellLat = (k) => g.lat[k] - mv.dN / M;
-    const cellLon = (k) => g.lon[k] - mv.dE / (M * Math.cos(g.lat[k] * D2R));
+    // (worked out once per row: cells in a row share their latitude)
+    const rowLa = new Float64Array(g.ny), rowShift = new Float64Array(g.ny);
+    for (let j = 0; j < g.ny; j++) { rowLa[j] = g.rowLat[j] - mv.dN / M; rowShift[j] = mv.dE / (M * Math.cos(g.rowLat[j] * D2R)); }
+    const nx = g.nx;
+    const cellLat = (k) => rowLa[(k / nx) | 0];
+    const cellLon = (k) => g.lon[k] - rowShift[(k / nx) | 0];
 
     if (w.kind === 'point') {
       const ex = new Float64Array(N), ey = new Float64Array(N), s2 = w.sigma * w.sigma + slop2;
@@ -140,21 +154,23 @@ Alibi.engine = (function () {
   }
 
   // ---------- combine witnesses: multiply their shapes (add log-likelihoods) ----------
-  function posterior(g, evs, idx, mask) {
-    const N = g.N, L = new Float64Array(N);
+  function sumLL(g, evs, idx, mask) {
+    const N = g.N, L = mask ? Float64Array.from(mask) : new Float64Array(N);
+    for (const i of idx) { const ll = evs[i].ll; for (let k = 0; k < N; k++) L[k] += ll[k]; }
+    return L;
+  }
+  // Probability of each cell from summed log-likelihoods; `minus` takes one witness back out
+  // (cheaper than adding all the others up again for every "leave one out")
+  function toP(g, L, minus) {
+    const N = g.N, P = new Float64Array(N);
     let top = -Infinity;
-    for (let k = 0; k < N; k++) {
-      let s = mask ? mask[k] : 0;
-      for (let t = 0; t < idx.length; t++) s += evs[idx[t]].ll[k];
-      L[k] = s;
-      if (s > top) top = s;
-    }
-    const P = new Float64Array(N);
+    for (let k = 0; k < N; k++) { const s = minus ? L[k] - minus[k] : L[k]; P[k] = s; if (s > top) top = s; }
     let tot = 0;
-    for (let k = 0; k < N; k++) { const p = Math.exp(L[k] - top) * g.area[k]; P[k] = p; tot += p; }
+    for (let k = 0; k < N; k++) { const p = Math.exp(P[k] - top) * g.area[k]; P[k] = p; tot += p; }
     for (let k = 0; k < N; k++) P[k] /= tot;
     return P;
   }
+  function posterior(g, evs, idx, mask) { return toP(g, sumLL(g, evs, idx, mask)); }
 
   // Standard normal CDF (Abramowitz & Stegun 7.1.26, error < 1.5e-7)
   function normCdf(x) {
@@ -191,41 +207,48 @@ Alibi.engine = (function () {
     return { p, fail: p < P_LIMIT };
   }
 
-  function check(g, evs, set, mask) {
+  // quick: only "does everyone agree?" is needed, so stop at the first failure; `first` = test these first
+  function check(g, evs, set, mask, quick, first) {
     const fails = [];
     if (set.length < 2) return { ok: true, fails };
-    for (const i of set) {
-      const t = test(evs[i], posterior(g, evs, set.filter((j) => j !== i), mask));
-      if (t.fail) fails.push(i);
+    const L = sumLL(g, evs, set, mask);
+    const order = first ? set.filter((i) => first.includes(i)).concat(set.filter((i) => !first.includes(i))) : set;
+    for (const i of order) {
+      const t = test(evs[i], toP(g, L, evs[i].ll));
+      if (t.fail) { fails.push(i); if (quick) break; }
     }
     return { ok: fails.length === 0, fails };
   }
 
   // Find the liar: which witness can we drop so that everyone left agrees?
+  // A witness that already proved itself a liar (GPS jumping faster than you can move) gets no vote at all.
   function fde(g, evs, ws, mask) {
-    const all = ws.map((_, i) => i);
+    const banned = ws.map((_, i) => i).filter((i) => ws[i].suspect);
+    const all = ws.map((_, i) => i).filter((i) => !ws[i].suspect);
+    if (banned.length) {
+      const r = all.length ? fde(g, evs.filter((_, i) => all.includes(i)), all.map((i) => ws[i]), mask) : null;
+      if (!r) return { kept: [], excluded: banned, conflict: false, suspects: [] };
+      const back = (list) => list.map((j) => all[j]);
+      return { kept: back(r.kept), excluded: banned.concat(back(r.excluded)), conflict: r.conflict, suspects: back(r.suspects),
+        options: r.options && r.options.map(back) };
+    }
     const base = check(g, evs, all, mask);
     if (base.ok) return { kept: all, excluded: [], conflict: false, suspects: [] };
 
     const options = [];
     for (const i of all) {
       const rest = all.filter((j) => j !== i);
-      if (rest.length >= 2 && check(g, evs, rest, mask).ok) options.push([i]);
+      if (rest.length >= 2 && check(g, evs, rest, mask, true, base.fails).ok) options.push([i]);
     }
     if (!options.length && all.length >= 5) {
       for (let a = 0; a < all.length; a++) {
         for (let b = a + 1; b < all.length; b++) {
           const rest = all.filter((j) => j !== a && j !== b);
-          if (check(g, evs, rest, mask).ok) options.push([a, b]);
+          if (check(g, evs, rest, mask, true, base.fails).ok) options.push([a, b]);
         }
       }
     }
-    let pick = options;
-    if (pick.length > 1) {
-      // tie-break: blame a witness that already looked suspicious (e.g. GPS jumped impossibly far)
-      const sus = pick.filter((o) => o.every((i) => ws[i].suspect));
-      if (sus.length === 1) pick = sus;
-    }
+    const pick = options;
     if (pick.length === 1) {
       const ex = pick[0];
       return { kept: all.filter((i) => !ex.includes(i)), excluded: ex, conflict: false, suspects: [] };
@@ -235,8 +258,32 @@ Alibi.engine = (function () {
   }
 
   // ---------- helpers ----------
+  // Unit vectors on the sphere, for where two star circles cross
+  const vec = (p) => [Math.cos(p.lat * D2R) * Math.cos(p.lon * D2R), Math.cos(p.lat * D2R) * Math.sin(p.lon * D2R), Math.sin(p.lat * D2R)];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const toLatLon = (v) => { const n = Math.hypot(v[0], v[1], v[2]); return { lat: Math.asin(v[2] / n) * R2D, lon: Math.atan2(v[1], v[0]) * R2D }; };
+
+  // Points where two circles on the sphere cross (centres, radii in radians). If measurement errors keep them
+  // just apart, the point where they come closest.
+  function circleCross(c1, r1, c2, r2) {
+    const a = vec(c1), b = vec(c2), d = dot(a, b), den = 1 - d * d;
+    if (den < 1e-12) return [];
+    const ka = (Math.cos(r1) - d * Math.cos(r2)) / den, kb = (Math.cos(r2) - d * Math.cos(r1)) / den;
+    const x0 = [0, 1, 2].map((i) => ka * a[i] + kb * b[i]);
+    const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const t2 = (1 - dot(x0, x0)) / dot(n, n);
+    if (t2 <= 0) return [toLatLon(x0)];
+    const t = Math.sqrt(t2);
+    return [toLatLon(x0.map((v, i) => v + t * n[i])), toLatLon(x0.map((v, i) => v - t * n[i]))];
+  }
+
+  // The area worth searching: around every witness's shape. A star gives a huge circle (everywhere it is at
+  // that height), so only the parts that matter count: the point of the circle nearest to each other
+  // witness, and where two star circles cross. Without this a lying GPS could hide from the stars just by
+  // being far away from them.
   function anchorBounds(ws) {
     let b = null;
+    const anchors = [];
     const add = (lat, lon, r) => {
       const dLat = r / M, dLon = r / (M * Math.max(0.05, Math.cos(lat * D2R)));
       const nb = { s: lat - dLat, n: lat + dLat, w: lon - dLon, e: lon + dLon };
@@ -247,9 +294,26 @@ Alibi.engine = (function () {
       if (w.kind === 'point') {
         const c = G.offset(w.lat, w.lon, mv.dE, mv.dN);
         add(c.lat, c.lon, 3 * Math.hypot(w.sigma, mv.sigma) + 100);
-      } else if (w.kind === 'bearing') add(w.lat, w.lon, VIS_RANGE + walked);
-      else if (w.kind === 'angle') { add(w.a.lat, w.a.lon, VIS_RANGE + walked); add(w.b.lat, w.b.lon, VIS_RANGE + walked); }
-      else if (w.kind === 'range') add(w.lat, w.lon, w.r + 3 * w.sigma + walked);
+        anchors.push(c);
+      } else if (w.kind === 'bearing') { add(w.lat, w.lon, VIS_RANGE + walked); anchors.push(w); }
+      else if (w.kind === 'angle') { add(w.a.lat, w.a.lon, VIS_RANGE + walked); add(w.b.lat, w.b.lon, VIS_RANGE + walked); anchors.push(w.a); }
+      else if (w.kind === 'range') { add(w.lat, w.lon, w.r + 3 * w.sigma + walked); anchors.push(w); }
+    }
+    const sky = ws.filter((w) => w.kind === 'sky').map((w) => {
+      const mv = w.move || ZERO_MOVE;
+      return { gp: SKY.groundPoint(w.body, w.time), zd: (90 - w.alt) * D2R, pad: 3 * Math.hypot(w.sigma * M, mv.sigma) + 20000, mv };
+    });
+    const addSky = (p, s) => { const c = G.offset(p.lat, p.lon, s.mv.dE, s.mv.dN); add(c.lat, c.lon, s.pad); };
+    for (const s of sky) {
+      for (const a of anchors) addSky(G.dest(s.gp.lat, s.gp.lon, G.bearing(s.gp.lat, s.gp.lon, a.lat, a.lon), s.zd * G.R), s);
+    }
+    for (let i = 0; i < sky.length; i++) {
+      for (let j = i + 1; j < sky.length; j++) {
+        for (const p of circleCross(sky[i].gp, sky[i].zd, sky[j].gp, sky[j].zd)) {
+          // with other witnesses around, the far crossing (thousands of km away) is not worth searching
+          if (!anchors.length || anchors.some((a) => G.dist(a.lat, a.lon, p.lat, p.lon) < 2000000)) addSky(p, sky[i]);
+        }
+      }
     }
     return b;
   }
@@ -287,6 +351,55 @@ Alibi.engine = (function () {
     return { est: { lat: la0, lon: lo0 }, r95: Math.max(r95, 0.5 * g.cellM) };
   }
 
+  // Radius of the circle around `est` that holds `frac` of the probability P. `order` = cells sorted by
+  // distance from est (shared by all hypotheses on the same grid).
+  function radiusAround(P, order, d, frac) {
+    let acc = 0;
+    for (const k of order) { acc += P[k]; if (acc >= frac) return d[k]; }
+    return d[order[order.length - 1]];
+  }
+
+  // Protection level: the radius around the best guess that holds 99 % of where you could be, both when
+  // every witness is honest and when any one of them is quietly lying (wrong by just too little to be
+  // caught). For each witness that could lie, ask the others alone where you could be ("solution
+  // separation", as in advanced receiver integrity monitoring) and keep the largest answer.
+  // Returns { pl, weakest (index of the witness the answer depends on most, or null), open (true if even
+  // the whole search area can't hold it) }.
+  function protection(ws, kept, est, r95, bounds, opts) {
+    // with a single witness nothing can lie undetected, but the ± is still the same 99 % radius
+    const hyps = kept.length < 2 ? [] : kept.filter((i) => monitored(ws[i]));
+    let g, Ps, Pall;
+    for (let level = 0; level < 7; level++) {
+      g = makeGrid(bounds);
+      const evs = ws.map((w, i) => (kept.includes(i) ? evaluate(w, g) : null));
+      const mask = g.size <= MASK_BELOW && opts.maskFor ? opts.maskFor(g) : null;
+      const L = sumLL(g, evs, kept, mask);
+      Pall = toP(g, L);
+      Ps = hyps.map((i) => toP(g, L, evs[i].ll));
+      // zoom into the area that holds every hypothesis (and the best guess)
+      const nb = Ps.concat([Pall]).map((P) => massBounds(g, P, 1e-4)).reduce((a, c) => ({ s: Math.min(a.s, c.s, est.lat), n: Math.max(a.n, c.n, est.lat),
+        w: Math.min(a.w, c.w, est.lon), e: Math.max(a.e, c.e, est.lon) }));
+      const nbSize = Math.max((nb.e - nb.w) * Math.cos(((nb.s + nb.n) / 2) * D2R) * M, (nb.n - nb.s) * M);
+      if (nbSize > 0.6 * g.size || g.size <= MIN_SIZE) break;
+      bounds = nb;
+    }
+    const c0 = Math.cos(est.lat * D2R), d = new Float64Array(g.N);
+    for (let k = 0; k < g.N; k++) d[k] = Math.hypot((g.lon[k] - est.lon) * M * c0, (g.lat[k] - est.lat) * M);
+    const order = Array.from({ length: g.N }, (_, k) => k).sort((a, b) => d[a] - d[b]);
+    let pl = Math.max(r95, radiusAround(Pall, order, d, PL_FRAC)), weakest = null, open = false;
+    Ps.forEach((P, h) => {
+      const r = radiusAround(P, order, d, PL_FRAC);
+      // if a hypothesis still has weight on the edge of the search area, the true answer is bigger still
+      let edge = 0;
+      for (let j = 0; j < g.ny; j++) {
+        for (let i = 0; i < g.nx; i++) if (i < 2 || j < 2 || i >= g.nx - 2 || j >= g.ny - 2) edge += P[j * g.nx + i];
+      }
+      if (edge > 0.01) open = true;
+      if (r > pl) { pl = r; weakest = hyps[h]; }
+    });
+    return { pl: Math.max(pl, 0.5 * g.cellM), weakest, open };
+  }
+
   function verdict(res, ws, limit) {
     const lim = '±' + G.fmtDist(limit);
     if (res.conflict) {
@@ -294,17 +407,25 @@ Alibi.engine = (function () {
       return { light: 'red', headline: 'Witnesses disagree', detail: `Can't tell who is lying: ${names}. Add another witness.` };
     }
     const r = '±' + G.fmtDist(res.r95), n = res.kept.length;
-    if (ws.length === 1) {
-      const gpsOnly = ws[0].type === 'gps';
+    if (n === 1) {
+      const gpsOnly = ws[res.kept[0]].type === 'gps';
       return {
-        light: res.r95 <= 10 * limit ? 'yellow' : 'red',
+        light: res.pl <= 10 * limit ? 'yellow' : 'red',
         headline: gpsOnly ? 'Only GPS, nothing checks it' : 'Only one witness',
-        detail: `About ${r}, but nothing checks it. Add a witness.`,
+        detail: `About ±${G.fmtDist(res.pl)}, but nothing checks it. Add a witness.`,
       };
     }
-    if (res.r95 <= limit) return { light: 'green', headline: `You're within ${r}`, detail: `${n} witnesses agree · need ${lim}` };
-    if (res.r95 <= 10 * limit) return { light: 'yellow', headline: `Roughly within ${r}`, detail: `Need ${lim}. Slow down and add a witness.` };
-    return { light: 'red', headline: `Too uncertain (${r})`, detail: 'Stop and add witnesses before you move on.' };
+    const pl = (res.plOpen ? 'more than ±' : '±') + G.fmtDist(res.pl);
+    const weak = res.weakest != null ? ws[res.weakest].label : null;
+    const ifLying = weak ? ` If ${weak} were lying, the others could only place you within ${pl}.` : '';
+    if (res.pl <= limit) {
+      return { light: 'green', headline: `You're within ${pl}`, detail: `${n} witnesses agree, and this holds even if one of them is lying. Safety limit ${lim}.` };
+    }
+    const add = weak ? `Add a witness that doesn't depend on ${weak}.` : 'Add a witness.';
+    if (res.pl <= 10 * limit && !res.plOpen) {
+      return { light: 'yellow', headline: `Roughly within ${pl}`, detail: `Most likely within ${r}.${ifLying} Your safety limit is ${lim}: slow down. ${add}` };
+    }
+    return { light: 'red', headline: `Too uncertain (${pl})`, detail: `Most likely within ${r}.${ifLying} Your safety limit is ${lim}: stop. ${add}` };
   }
 
   // ---------- main entry ----------
@@ -314,8 +435,9 @@ Alibi.engine = (function () {
     const empty = { empty: true, light: 'grey', status: [], alerts: [], headline: 'No witnesses yet',
       detail: 'Turn on GPS, tap “I’m about here”, or aim at a landmark.' };
     if (!ws.length) return empty;
-    let bounds = anchorBounds(ws) || opts.fallbackBounds;
-    if (!bounds) return Object.assign(empty, { detail: 'Give a rough guess first: “I’m about here”.' });
+    const start = anchorBounds(ws) || opts.fallbackBounds;
+    if (!start) return Object.assign(empty, { detail: 'Give a rough guess first: “I’m about here”.' });
+    let bounds = start;
 
     let last = null;
     for (let level = 0; level < 7; level++) {
@@ -323,6 +445,7 @@ Alibi.engine = (function () {
       const evs = ws.map((w) => evaluate(w, g));
       const mask = g.size <= MASK_BELOW && opts.maskFor ? opts.maskFor(g) : null;
       const f = fde(g, evs, ws, mask);
+      if (!f.kept.length) { last = { g, f, P: null, mask }; break; }
       const P = posterior(g, evs, f.kept, mask);
       last = { g, f, P, mask };
       let nb;
@@ -330,7 +453,8 @@ Alibi.engine = (function () {
         // A real stand-off (e.g. two witnesses that disagree): nothing to zoom into.
         if (!f.options || !f.options.length) break;
         // Several explanations fit at this coarse resolution: zoom into all of them and look closer.
-        nb = f.options.map((ex) => massBounds(g, posterior(g, evs, ws.map((_, i) => i).filter((i) => !ex.includes(i)), mask), 1e-4))
+        const voters = ws.map((_, i) => i).filter((i) => !ws[i].suspect);
+        nb = f.options.map((ex) => massBounds(g, posterior(g, evs, voters.filter((i) => !ex.includes(i)), mask), 1e-4))
           .reduce((a, b) => ({ s: Math.min(a.s, b.s), n: Math.max(a.n, b.n), w: Math.min(a.w, b.w), e: Math.max(a.e, b.e) }));
       } else nb = massBounds(g, P, 1e-4);
       const nbSize = Math.max((nb.e - nb.w) * Math.cos(((nb.s + nb.n) / 2) * D2R) * M, (nb.n - nb.s) * M);
@@ -340,21 +464,31 @@ Alibi.engine = (function () {
 
     const { g, f, P, mask } = last;
     const status = ws.map((w, i) => ({
-      state: f.conflict ? (f.suspects.includes(i) ? 'suspect' : 'agrees')
+      state: f.conflict ? (f.suspects.includes(i) ? 'suspect' : f.excluded.includes(i) ? 'ignored' : 'agrees')
         : f.excluded.includes(i) ? 'ignored'
-        : ws.length === 1 ? 'unchecked' : 'agrees',
+        : f.kept.length === 1 ? 'unchecked' : 'agrees',
     }));
     const res = { empty: false, grid: g, P, maskUsed: !!mask, conflict: f.conflict, kept: f.kept,
       excluded: f.excluded, suspects: f.suspects, status, alerts: [] };
-    if (!f.conflict) Object.assign(res, summarize(g, P));
-    Object.assign(res, verdict(res, ws, opts.alertLimit || 150));
+    const limit = opts.alertLimit || 150;
+    if (!f.kept.length) {
+      Object.assign(res, { light: 'red', headline: 'No witness left to trust', detail: 'Add a witness: a landmark, the sky or “I’m about here”.' });
+    } else {
+      if (!f.conflict) {
+        Object.assign(res, summarize(g, P));
+        Object.assign(res, protection(ws, f.kept, res.est, res.r95, start, opts));
+        res.plOpen = res.open;
+        delete res.open;
+      }
+      Object.assign(res, verdict(res, ws, limit));
+    }
     for (const i of f.excluded) {
       const w = ws[i];
-      res.alerts.push(`${w.label} disagrees with the other ${f.kept.length} witnesses, so it is ignored.` +
-        (w.type === 'gps' ? ' Possible spoofing.' : ''));
+      res.alerts.push(w.suspect ? `${w.why || `${w.label} moved faster than you possibly can.`} It is ignored.` + (w.type === 'gps' ? ' Possible spoofing.' : '')
+        : `${w.label} disagrees with the other ${f.kept.length} witnesses, so it is ignored.` + (w.type === 'gps' ? ' Possible spoofing.' : ''));
     }
     return res;
   }
 
-  return { analyze, density };
+  return { analyze, density, FAULT, MONITOR };
 })();

@@ -8,7 +8,9 @@ Alibi.sensors = (function () {
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
   // recent { t, heading (compass, magnetic, may be null), rel (gyroscope heading, arbitrary zero, may be null), elev }
   const samples = [];
-  let started = false, lastEvent = 0, lastAbs = null, lastRel = null;
+  // 15 s of { t, d: compass heading minus gyroscope heading }, about 10 a second, for the compass check
+  const pairs = [];
+  let started = false, lastEvent = 0, lastAbs = null, lastRel = null, lastAcc = null;
   let stepCb = null, stepOn = false, filt = 9.81, lastStep = 0, rising = false;
 
   // Direction of the back camera from the W3C orientation angles (rotation matrix Rz(a)·Rx(b)·Ry(g)).
@@ -24,13 +26,21 @@ Alibi.sensors = (function () {
     const elev = Math.asin(Math.max(-1, Math.min(1, U))) * R2D;
     // phone lying flat: the camera looks at the ground, so use the top edge of the phone instead
     const dir = Math.abs(elev) > 65 ? G.wrap360(Math.atan2(-sA * cB, cA * cB) * R2D) : G.wrap360(Math.atan2(E, N) * R2D);
-    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) { lastAbs = e.webkitCompassHeading; lastRel = dir; }
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      lastAbs = e.webkitCompassHeading;
+      lastRel = dir;
+      if (typeof e.webkitCompassAccuracy === 'number') lastAcc = e.webkitCompassAccuracy;   // iPhone: ± degrees, -1 = uncalibrated
+    }
     else if (absolute) lastAbs = dir;
     else lastRel = dir;
     const now = performance.now();
     lastEvent = now;
     samples.push({ t: now, heading: lastAbs, rel: lastRel, elev });
     while (samples.length && now - samples[0].t > 3000) samples.shift();
+    if (lastAbs != null && lastRel != null && (!pairs.length || now - pairs[pairs.length - 1].t >= 100)) {
+      pairs.push({ t: now, d: G.wrap180(lastAbs - lastRel) });
+      while (pairs.length && now - pairs[0].t > 15000) pairs.shift();
+    }
   }
 
   function onMotion(e) {
@@ -90,7 +100,21 @@ Alibi.sensors = (function () {
     return { heading: h.mean, headSpread: h.spread, rel: r.mean, relSpread: r.spread, elev, elevSpread, n: win.length };
   }
 
+  // Compass check. Magnets can't fool the gyroscope, so the compass should turn exactly as much as the gyroscope
+  // does, and the gap between the two should stay put. If the gap wanders, something magnetic is near.
+  // The phone itself won't say so: in the organisers' train recording Android marked every compass reading
+  // "high accuracy" while it was far off. drift = how far the gap wandered (degrees, 1 s averages) over the last
+  // `ms`; null if there is too little data or no separate gyroscope stream. accuracy = iPhone's own ± (or null).
+  function compassCheck(ms) {
+    const now = performance.now(), win = pairs.filter((p) => now - p.t <= ms);
+    if (win.length < 20 || win[win.length - 1].t - win[0].t < 3000) return { drift: null, accuracy: lastAcc };
+    const mean = circular(win, 'd').mean, bins = {};
+    for (const p of win) (bins[Math.floor((now - p.t) / 1000)] = bins[Math.floor((now - p.t) / 1000)] || []).push(p);
+    const dev = Object.values(bins).filter((b) => b.length >= 3).map((b) => G.wrap180(circular(b, 'd').mean - mean));
+    return { drift: dev.length > 1 ? Math.max(...dev) - Math.min(...dev) : null, accuracy: lastAcc };
+  }
+
   function setSteps(on, cb) { stepOn = on; stepCb = cb; }
 
-  return { start, alive, current, average, setSteps };
+  return { start, alive, current, average, compassCheck, setSteps };
 })();

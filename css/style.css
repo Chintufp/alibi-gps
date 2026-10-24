@@ -46,6 +46,26 @@ em { font-style: normal; }
 #hint { font-size: 13px; color: var(--accent); margin-top: 3px; font-weight: 650; }
 #hint:empty { display: none; }
 
+/* first visit: until the first witness arrives, the status card says what Alibi is and what to do */
+#intro { display: none; }
+.status.intro { align-items: flex-start; }
+.status.intro #intro { display: block; }
+.status.intro #headline, .status.intro #detail, .status.intro #hint { display: none; }
+.intro-title { font-weight: 750; font-size: 16px; line-height: 1.25; }
+#intro p { margin: 4px 0 0; font-size: 13px; line-height: 1.4; color: #334155; }
+#intro .intro-key { color: var(--muted); }
+.kv { white-space: nowrap; }
+.kd { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 3px 0 5px; vertical-align: -1px; }
+@media (max-width: 899px) { .status.intro .light { display: none; } }   /* phones: the text needs the room, and the key explains the light */
+.kd.green { background: var(--green); }
+.kd.yellow { background: var(--yellow); }
+.kd.red { background: var(--red); }
+.intro-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.intro-buttons button {
+  flex: 1 1 auto; border: 1px solid var(--line); background: #fff; border-radius: 12px;
+  padding: 8px 10px; font-size: 14px; font-weight: 650; white-space: nowrap;
+}
+
 .alerts {
   position: fixed; z-index: 1001; left: 10px; right: 58px; top: calc(18px + var(--status-h, 74px) + env(safe-area-inset-top));
   display: flex; flex-direction: column; gap: 6px; pointer-events: none;
@@ -53,6 +73,11 @@ em { font-style: normal; }
 .alert {
   background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 12px;
   padding: 8px 12px; font-size: 13px; font-weight: 650; box-shadow: var(--shadow);
+}
+/* phones: compact alerts, so two of them don't cover the top third of the map */
+@media (max-width: 899px) {
+  .alerts { gap: 4px; }
+  .alert { padding: 5px 9px; font-size: 12px; line-height: 1.3; border-radius: 10px; }
 }
 
 /* ---------- panels (main sheet + story) ---------- */
@@ -69,6 +94,17 @@ body:not(.replay-mode) .replay { display: none; }
 .replay p { margin: 6px 0 8px; font-size: 13.5px; line-height: 1.4; }
 #replayChart { display: block; width: 100%; height: 84px; margin-top: 8px; border-radius: 10px; border: 1px solid var(--line); cursor: pointer; }
 #replaySlider { width: 100%; margin: 8px 0 0; accent-color: var(--ink); }
+.replay .replay-note { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+.replay-card { margin: 8px 0 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #f8fafc; }
+.replay-card b { display: block; font-size: 15px; }
+.replay-card p { margin: 4px 0 8px !important; }
+.replay-card.good { border-color: #86efac; background: #f0fdf4; }
+.replay-card.bad { border-color: #fca5a5; background: #fef2f2; }
+.replay-card.warn { border-color: #fcd34d; background: #fffbeb; }
+.replay-card button { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-weight: 650; }
+.replay-nav button { padding: 10px 8px; white-space: nowrap; }
+.replay-nav button:first-child, .replay-nav button:last-child, #replaySkip { flex: none; }
+.pick.scene { flex-direction: column; align-items: flex-start; gap: 2px; }
 .handle { display: block; width: 100%; height: 22px; border: 0; background: none; position: relative; }
 .handle::before {
   content: ''; position: absolute; left: 50%; top: 8px; width: 42px; height: 5px; margin-left: -21px;
@@ -138,7 +174,8 @@ body:not(.replay-mode) .replay { display: none; }
 /* ---------- aiming view ---------- */
 .aim { position: fixed; inset: 0; z-index: 2000; background: #111; color: #fff; }
 .aim video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.cross { position: absolute; left: 50%; top: 42%; width: 76px; height: 76px; margin: -38px 0 0 -38px; }
+/* the cross marks the camera axis, which is the centre of the camera picture (and of the screen) */
+.cross { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; }
 .cross::before, .cross::after { content: ''; position: absolute; background: #ff3b30; box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
 .cross::before { left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; }
 .cross::after { top: 50%; left: 0; right: 0; height: 2px; margin-top: -1px; }
@@ -219,13 +256,17 @@ body:not(.replay-mode) .replay { display: none; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 12px 0; }
 
 /* ---------- toast ---------- */
+/* phones: just above the bottom panel (placeToast sets the exact height), so it never covers the middle of the map,
+   and over the aiming view too (z-index above .aim) */
 .toast {
-  position: fixed; z-index: 1600; left: 50%; bottom: calc(52vh + 12px); transform: translate(-50%, 10px);
+  position: fixed; z-index: 2100; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translate(-50%, 10px);
   background: var(--ink); color: #fff; padding: 10px 14px; border-radius: 12px; font-size: 14px;
   width: max-content; max-width: min(92vw, 460px); box-shadow: var(--shadow);
   opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+/* while aiming it is centred on the screen too (placeToast puts it just above the buttons or the review card) */
+.aim:not(.hidden) ~ .toast { left: 50%; }
 .chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .chip { border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: #fff; border-radius: 999px; padding: 5px 10px; font-size: 13px; }
 .chip.on { background: #fff; color: var(--ink); }
@@ -254,6 +295,8 @@ body:not(.replay-mode) .replay { display: none; }
   position: absolute; left: 50%; top: 33px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-weight: 700;
   background: rgba(255, 255, 255, .9); padding: 1px 6px; border-radius: 6px; color: #92400e;
 }
+/* in the demo Aino's label goes above her: the GPS, steps and guess labels sit beside and below her */
+.truth-icon.aino em { top: auto; bottom: 33px; }
 .real-dot { width: 12px; height: 12px; border-radius: 50%; background: #94a3b8; border: 2px solid #fff; box-shadow: 0 0 0 1px #64748b; }
 .leaflet-tooltip.wlabel { font-weight: 700; font-size: 12px; }
 .band-label span {
