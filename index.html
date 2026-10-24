@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Alibi – where am I, really?</title>
+  <meta name="description" content="GPS is just one witness. Alibi checks it against landmarks, the stars, cell towers and your own steps, and ignores the one that is lying.">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <header id="status" class="status">
+    <div id="light" class="light"></div>
+    <div class="status-text">
+      <div id="headline">Alibi</div>
+      <div id="detail">GPS is just one witness. Add more to check it.</div>
+      <div id="hint"></div>
+    </div>
+  </header>
+  <div id="alerts" class="alerts"></div>
+
+  <!-- main panel -->
+  <section id="sheet" class="sheet">
+    <button id="sheetHandle" class="handle" aria-label="Show or hide the panel"></button>
+    <div class="modes">
+      <button class="mode active" data-mode="walk">🚶 Walk</button>
+      <button class="mode" data-mode="drive">🚗 Drive</button>
+      <button class="mode" data-mode="boat">🚤 Boat</button>
+    </div>
+    <div class="actions">
+      <button class="act" id="actGps"><span>🛰️</span>GPS</button>
+      <button class="act" id="actYou"><span>📍</span>I’m about here</button>
+      <button class="act" id="actLandmark"><span>🗼</span>Landmark</button>
+      <button class="act" id="actSky"><span>✨</span>Sky</button>
+      <button class="act" id="actTowers"><span>📡</span>Cell towers</button>
+      <button class="act danger" id="actSpoof"><span>😈</span><em id="spoofLabel">Spoof GPS</em></button>
+    </div>
+    <h4>Witnesses</h4>
+    <ul id="witnesses" class="witnesses"></ul>
+    <div class="footer-row">
+      <button id="actStory" class="primary">🎬 Lapland demo</button>
+      <button id="actClear">Clear</button>
+      <button id="actSettings" aria-label="Settings">⚙️</button>
+    </div>
+  </section>
+
+  <!-- Lapland demo story -->
+  <section id="story" class="story">
+    <div class="story-head">
+      <span id="storyStep"></span>
+      <button id="storyExit">✕ Exit demo</button>
+    </div>
+    <h3 id="storyTitle"></h3>
+    <p id="storyText"></p>
+    <ul id="storyWitnesses" class="witnesses compact"></ul>
+    <div class="story-nav">
+      <button id="storyBack">◀ Back</button>
+      <button id="storyNext" class="primary">Next ▶</button>
+    </div>
+  </section>
+
+  <!-- aiming view: the camera (or a simulated view for demos) + crosshair, then a review step -->
+  <section id="aim" class="aim hidden">
+    <video id="cam" playsinline autoplay muted></video>
+    <canvas id="simView" class="hidden"></canvas>
+    <div class="cross"></div>
+    <div class="aim-top">
+      <div class="aim-top-row">
+        <b id="aimTitle"></b>
+        <button id="simToggle" class="sim-toggle">🎮 Simulated view</button>
+      </div>
+      <p id="aimHint"></p>
+    </div>
+    <div id="aimPanel" class="aim-panel">
+      <div class="readout">
+        <div><small>Direction (true)</small><b id="aimBrg">—</b></div>
+        <div><small>Up from horizon</small><b id="aimAlt">—</b></div>
+      </div>
+      <div class="aim-buttons">
+        <button id="aimCancel">Cancel</button>
+        <button id="aimLock">📸 Take</button>
+      </div>
+    </div>
+    <div id="review" class="review hidden">
+      <div class="review-head">
+        <img id="reviewImg" alt="The photo you just took">
+        <div><b id="reviewTitle"></b><p id="reviewNote" class="note"></p></div>
+      </div>
+      <div id="reviewSource" class="seg"></div>
+      <div class="value-row">
+        <button data-step="-1">−1</button><button data-step="-0.1">−0.1</button>
+        <input id="reviewValue" type="number" step="0.1" inputmode="decimal" aria-label="Measured angle">
+        <button data-step="0.1">+0.1</button><button data-step="1">+1</button>
+      </div>
+      <p id="reviewTrue" class="note"></p>
+      <label class="field">How sure? ± degrees<input id="reviewPm" type="number" step="0.1" min="0.1"></label>
+      <label class="calib hidden" id="reviewCalibRow"><input type="checkbox" id="reviewCalib"> Use this to calibrate my phone compass (GPS is trustworthy right now)</label>
+      <div class="aim-buttons">
+        <button id="reviewRetake">↺ Retake</button>
+        <button id="reviewAdd">✓ Add witness</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- list picker -->
+  <section id="picker" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="pickerTitle"></h3>
+      <div id="pickerBody"></div>
+      <button id="pickerClose" class="wide">Close</button>
+    </div>
+  </section>
+
+  <!-- settings -->
+  <section id="settings" class="modal hidden">
+    <div class="modal-card">
+      <h3>Settings</h3>
+      <label class="field">Safety limit for this mode (m)<input id="setLimit" type="number" min="5" step="5"></label>
+      <label class="field">Extra compass correction (°)<input id="setOffset" type="number" step="0.5"></label>
+      <p class="note" id="setDecl"></p>
+      <label class="check"><input id="setSteps" type="checkbox"> Count my steps and carry the witnesses along as I walk (phone only)</label>
+      <button id="settingsClose" class="primary wide">Done</button>
+    </div>
+  </section>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/geo.js"></script>
+  <script src="js/sky.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/osm.js"></script>
+  <script src="js/sensors.js"></script>
+  <script src="js/scenario-data.js"></script>
+  <script src="js/landmark-data.js"></script>
+  <script src="js/scenario.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
