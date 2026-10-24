@@ -142,7 +142,7 @@ Alibi.scenario = (function () {
     },
     {
       at: 10450, zoom: 14, title: 'Fog, and GPS is jammed',
-      alert: 'GPS: no signal (jammed).',
+      alert: 'GPS: no signal (jammed or blocked).',
       text: 'Next morning: thick fog and no GPS at all. Only her steps are left, and they have drifted for 7.5 km since the last fix: ±1.8 km, with nothing to check them. Red: she takes no shortcuts and follows only the marked trail until she can sight something. The map rule cuts out the lakes, because walkers are not in lakes.',
       make: (t) => [steps(t, 150, 120, walkSigma(FIX_SIGMA, 7450), 7450)],
     },

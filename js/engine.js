@@ -29,6 +29,7 @@ Alibi.engine = (function () {
   const MONITOR = 5e-3;
   const PL_FRAC = 0.99;        // the protection level holds 99 % of where you could be, under every hypothesis
   const monitored = (w) => (FAULT[w.type] == null ? 1e-2 : FAULT[w.type]) >= MONITOR;
+  const RADIO = new Set(['gps', 'wifi']);
 
   // ---------- search grid (square cells, rows evenly spaced in Web Mercator like the map) ----------
   function makeGrid(b) {
@@ -148,6 +149,7 @@ Alibi.engine = (function () {
         for (let j = 0; j < q.length; j++) sum += Math.exp(best - q[j]);
         e[k] = dBest; v[k] = s2Best; ll[k] = -best + Math.log(sum);
       }
+      return { kind: 'near', ll, e, v };
     } else if (w.kind === 'sky') {
       // altitude of the body seen from each cell; rows and columns separate, so precompute them
       const p = SKY.radec(w.body, w.time), gm = SKY.gmst(w.time);
@@ -215,6 +217,12 @@ Alibi.engine = (function () {
       const d2 = (c * mx * mx - 2 * b * mx * my + a * my * my) / det;
       return { z: Math.sqrt(Math.max(0, d2)), fail: d2 > CHI2_2D };
     }
+    if (ev.kind === 'near') {
+      // how likely is a router this far from where the others put you? (a distance in 2-D: Rayleigh)
+      let p = 0;
+      for (let k = 0; k < N; k++) if (P[k] > 1e-12) p += P[k] * Math.exp(-0.5 * ev.e[k] * ev.e[k] / ev.v[k]);
+      return { p, fail: p < P_LIMIT };
+    }
     let below = 0;
     for (let k = 0; k < N; k++) {
       if (P[k] > 1e-12) below += P[k] * normCdf(-ev.e[k] / Math.sqrt(ev.v[k]));
@@ -263,6 +271,12 @@ Alibi.engine = (function () {
           if (check(g, evs, rest, mask, true, base.fails).ok) options.push([a, b]);
         }
       }
+    }
+    // ...or a whole shared cause, if no smaller exclusion inside it already works
+    for (const h of hypotheses(ws, all)) {
+      if (h.drop.length < 2 || h.drop.length >= all.length || options.some((o) => o.every((i) => h.drop.includes(i)))) continue;
+      const rest = all.filter((j) => !h.drop.includes(j));
+      if (check(g, evs, rest, mask, true, base.fails).ok) options.push(h.drop);
     }
     const pick = options;
     if (pick.length === 1) {
@@ -400,8 +414,18 @@ Alibi.engine = (function () {
       });
     }
     for (const gr of groups.values()) {
-      const what = gr.drop.every((i) => ws[i].type === 'wifi') ? 'the other Wi-Fi from that place' : 'everything aimed at it';
+      const gps = gr.drop.find((i) => ws[i].type === 'gps');
+      if (gps != null) gr.label = ws[gps].label;
+      const what = gps != null ? 'the Wi-Fi places looked up around it'
+        : gr.drop.every((i) => ws[i].type === 'wifi') ? 'the other Wi-Fi from that place' : 'everything aimed at it';
       out.push(gr.drop.length > 1 ? Object.assign(gr, { label: `${gr.label} (and ${what})` }) : gr);
+    }
+    // GPS and Wi-Fi names are both radio, and one attacker with one cheap transmitter can fake them all at
+    // once (a GPS spoofer plus Wi-Fi beacons named after the shops near the fake spot): one more hypothesis
+    const radio = kept.filter((i) => RADIO.has(ws[i].type));
+    if (radio.length > 1 && radio.some((i) => ws[i].type === 'wifi')) {
+      out.push({ drop: radio, label: radio.some((i) => ws[i].type === 'gps') ? 'GPS and the Wi-Fi names (one radio attacker could fake both)'
+        : 'the Wi-Fi names (one attacker could fake them all)' });
     }
     // a chain of shops has one key per shop: dropping the same witnesses again tells nothing new
     return out.filter((h, i) => out.findIndex((o) => o.drop.join() === h.drop.join()) === i);
@@ -409,7 +433,9 @@ Alibi.engine = (function () {
 
   function protection(ws, kept, est, r95, bounds, opts) {
     // with a single witness nothing can lie undetected, but the ± is still the same 99 % radius
-    const hyps = kept.length < 2 ? [] : hypotheses(ws, kept).filter((h) => h.drop.length < kept.length);
+    const all = kept.length < 2 ? [] : hypotheses(ws, kept), hyps = all.filter((h) => h.drop.length < kept.length);
+    // if one shared cause could spoil every witness at once (all of them radio, say), nothing is left to check them
+    const whole = all.find((h) => h.drop.length >= kept.length && h.drop.length > 1);
     let g, Ps, Pall;
     for (let level = 0; level < 7; level++) {
       g = makeGrid(bounds);
@@ -433,7 +459,7 @@ Alibi.engine = (function () {
     const c0 = Math.cos(est.lat * D2R), d = new Float64Array(g.N);
     for (let k = 0; k < g.N; k++) d[k] = Math.hypot((g.lon[k] - est.lon) * M * c0, (g.lat[k] - est.lat) * M);
     const order = Array.from({ length: g.N }, (_, k) => k).sort((a, b) => d[a] - d[b]);
-    let pl = Math.max(r95, radiusAround(Pall, order, d, PL_FRAC)), weakest = null, open = false;
+    let pl = Math.max(r95, radiusAround(Pall, order, d, PL_FRAC)), weakest = whole ? whole.label : null, open = !!whole;
     Ps.forEach((P, h) => {
       const r = radiusAround(P, order, d, PL_FRAC);
       // if a hypothesis still has weight on the edge of the search area, the true answer is bigger still
@@ -475,7 +501,10 @@ Alibi.engine = (function () {
     // prove much: a slow enough drag moves both. Then the best it can say is "consistent".
     const selfCheck = res.kept.some((i) => ws[i].type === 'gps') && res.kept.every((i) => ws[i].type === 'gps' || ws[i].fromGps);
     if (res.pl <= limit && !res.plOpen && selfCheck) {
-      return { light: 'yellow', headline: `Consistent, within ${pl}`, detail: `GPS agrees with your own motion. But that motion was started from GPS a little earlier, so a very slow drag could hide in both. Safety limit ${lim}: ${A.yellow}. Add a witness that doesn't depend on GPS.` };
+      const wifi = res.kept.some((i) => ws[i].type === 'wifi');
+      const why = wifi ? 'GPS agrees with the Wi-Fi you see. But those places were looked up around where GPS says you are, so a spoofer could put you next to another shop with the same name.'
+        : 'GPS agrees with your own motion. But that motion was started from GPS a little earlier, so a very slow drag could hide in both.';
+      return { light: 'yellow', headline: `Consistent, within ${pl}`, detail: `${why} Safety limit ${lim}: ${A.yellow}. Add a witness that doesn't depend on GPS.` };
     }
     if (res.pl <= limit && !res.plOpen) {
       return { light: 'green', headline: `You're within ${pl}`, detail: `${n} witnesses agree, and this holds even if one of them is lying. Safety limit ${lim}.` };

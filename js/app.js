@@ -60,6 +60,7 @@
   // ---------- witnesses ----------
   function addWitness(w) {
     w.id = 'w' + state.nextId++;
+    w.t = Date.now();
     state.witnesses.push(w);
     // show the panel again, so you see the new witness and what it changed
     $('sheet').classList.remove('collapsed');
@@ -75,7 +76,19 @@
     if (state.story) return state.story.witnesses;
     if (state.replay) return state.replay.witnesses;
     const g = gpsWitness(), s = stepsWitness();
-    return (g ? [g] : []).concat(s ? [s] : [], state.witnesses);
+    return (g ? [g] : []).concat(s ? [s] : [], state.witnesses.map(aged));
+  }
+  // Without step counting Alibi can't tell whether you have moved since a witness was taken, so it counts each
+  // one as if you might have: its shape blurs by about AGE_SPEED × its age (2 sigma), and an old sighting fades.
+  const AGE_SPEED = { walk: 1, drive: 15, boat: 5 };      // m/s
+  function aged(w) {
+    const age = w.t ? (Date.now() - w.t) / 1000 : 0;
+    if (state.steps || age < 10) return w;
+    const m = w.move || { dE: 0, dN: 0, sigma: 0, walked: 0 };
+    return Object.assign({}, w, {
+      move: Object.assign({}, m, { sigma: Math.hypot(m.sigma, AGE_SPEED[state.mode] * age / 2) }),
+      detail: w.detail + (age >= 60 ? ` · ${Math.round(age / 60)} min ago` : ''),
+    });
   }
   function refPoint() {
     if (state.result && state.result.est) return state.result.est;
@@ -116,7 +129,7 @@
         why = `GPS is still ${G.fmtDist(now)} away from where the other witnesses put you, as when it was caught lying.`;
       }
     }
-    return { id: 'gps', type: 'gps', kind: 'point', lat: p.lat, lon: p.lon, sigma, label: gs.sim ? 'GPS (simulated)' : 'GPS', suspect, why,
+    return { id: 'gps', type: 'gps', kind: 'point', lat: p.lat, lon: p.lon, sigma, keys: ['gps'], label: gs.sim ? 'GPS (simulated)' : 'GPS', suspect, why,
       detail: `±${G.fmtDist(2.45 * sigma)}${note}` };
   }
 
@@ -207,6 +220,8 @@
   setInterval(() => {
     if (!state.story && state.gps.on && state.gps.raw && state.gps.spoof === 'drag') { speedCheck(); schedule(); }
   }, 1000);
+  // witnesses grow older (see aged): look again now and then
+  setInterval(() => { if (!state.story && !state.replay && !state.steps && state.witnesses.length) schedule(); }, 15000);
 
   // ---------- compass ----------
   function correctedBearing(mag) {
@@ -236,7 +251,7 @@
     hideWhileGuessing();
     const chips = [50, 200, 1000, 5000].map((r) =>
       `<button class="chip ${r === state.youRadius ? 'on' : ''}" data-r="${r}">±${G.fmtDist(r)}</button>`).join('');
-    toastHTML('<b>Tap where YOU think you are, from what you see.</b> GPS is hidden for now: a guess copied from it is no extra witness.' +
+    toastHTML('<b>Tap where YOU think you are, from what you see</b> (a sign, a building, a lake), not just the middle of the map: the map may have followed GPS. GPS is hidden for now: a guess copied from it is no extra witness.' +
       `<div class="chips">${chips}<button class="chip" data-cancel="1">Cancel</button></div>`, 0);
     collapseSheet();
   }
@@ -517,7 +532,7 @@
   // Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi only reaches
   // about 100 m. So a name you can see puts you near a mapped place with that name: one of them, if it's a
   // chain. Works with GPS off and no camera. Anyone can name a hotspot "Lidl", so it is checked like any witness.
-  const WIFI_REACH = 50;            // sigma (m): 95 % of the time within about 120 m of the router
+  const WIFI_REACH = 80;            // sigma (m): 95 % of the time within about 200 m of the router
   function actRadio() {
     if (state.story) return;
     $('wifiResult').innerHTML = '';
@@ -533,19 +548,20 @@
     if (wf.kind === 'empty') { say('Type a network name from your phone’s Wi-Fi list, for example the café or shop you are next to.'); return; }
     if (wf.kind === 'moving') { say(`“${esc(ssid)}” looks like a train, bus, ferry or phone hotspot: it moves with you, so it can’t tell where you are. Try another name.`); return; }
     if (wf.kind === 'home') { say(`“${esc(ssid)}” looks like a home router’s factory name, which no map knows. Look for a shop, café, library or campus name.`); return; }
-    // search where the map is looking (at least 2 km around its middle, at most 10 km)
+    // Search around where the map is looking, wide (5 to 25 km): the place you see must be among those found,
+    // and a narrow search around a spoofed GPS would only find the shop the spoofer chose
     const c = map.getCenter(), b = map.getBounds();
-    const r = Math.min(10000, Math.max(2000, G.dist(c.lat, c.lng, b.getNorth(), b.getEast())));
-    const where = `within ${G.fmtDist(r)} of the middle of the map`;
-    say(`Looking for “${esc(wf.kind === 'campus' ? 'a university or college' : wf.key)}” on the map ${where}…`);
+    const r = Math.min(25000, Math.max(5000, G.dist(c.lat, c.lng, b.getNorth(), b.getEast())));
+    const where = `within ${G.fmtDist(r)} of the map’s centre`;
+    say(`Looking for “${esc(wf.kind === 'campus' ? 'a university or college' : wf.key)}” ${where}…`);
     let places;
     try { places = await OSM.wifiPlaces(OSM.around(c.lat, c.lng, r), wf); } catch (e) { say(`Could not reach OpenStreetMap (${esc(e.message)}). Try again in a minute.`); return; }
     places = places.map((p) => Object.assign(p, { d: G.dist(c.lat, c.lng, p.lat, p.lon) })).filter((p) => p.d <= r).sort((a, b2) => a.d - b2.d);
     if (!places.length) { say(`No place matching “${esc(ssid)}” is mapped ${where}. Move the map to where you think you are, or try another name.`); return; }
-    if (places.length > 25) { say(`${places.length} places ${where} fit “${esc(ssid)}”: too many to tell where you are. Try a more specific name, or zoom the map in.`); return; }
+    if (places.length > 40) { say(`${places.length} places ${where} fit “${esc(ssid)}”: too many to tell where you are. Try a more specific name, or zoom the map in.`); return; }
     const sites = places.map((p) => ({ lat: p.lat, lon: p.lon, name: p.name,
       sigma: Math.hypot(WIFI_REACH, Math.max(p.half, wf.kind === 'campus' ? 200 : 0) / 1.5) }));
-    const one = sites.length === 1, list = places.slice(0, 5).map((p) => `<li>${esc(p.name)} <small>${G.fmtDist(p.d)} from the middle</small></li>`).join('');
+    const one = sites.length === 1, list = places.slice(0, 5).map((p) => `<li>${esc(p.name)} <small>${G.fmtDist(p.d)} from the centre</small></li>`).join('');
     out.innerHTML = `<p class="note">${one ? `One place ${where} fits:` : `${sites.length} places ${where} fit. Alibi keeps all of them as possibilities, and the other witnesses pick the right one:`}</p>
       <ul class="wifi-list">${list}${sites.length > 5 ? `<li><small>and ${sites.length - 5} more</small></li>` : ''}</ul>
       <button id="wifiAdd" class="primary wide"><i class="fa-solid fa-wifi"></i> I can see this Wi-Fi</button>`;
@@ -553,20 +569,26 @@
       closeWifi();
       state.witnesses = state.witnesses.filter((w) => !(w.type === 'wifi' && w.ssid.toLowerCase() === ssid.toLowerCase()));
       // Two Wi-Fi names from the same place are one witness, not two: if one is fake or misplaced, so is the
-      // other. Places within 100 m of a place another Wi-Fi name already uses share its key, so the
+      // other. Places within 150 m of a place another Wi-Fi name already uses share its key, so the
       // "what if it is lying?" check drops them together; a name that adds no new place isn't added at all.
       const others = state.witnesses.filter((w) => w.type === 'wifi');
       for (const x of sites) {
-        const o = others.flatMap((w) => w.sites).find((y) => G.dist(x.lat, x.lon, y.lat, y.lon) < 100);
+        const o = others.flatMap((w) => w.sites).find((y) => G.dist(x.lat, x.lon, y.lat, y.lon) < 150);
         x.key = o ? o.key : 'wifi' + state.nextId++;
       }
       const same = others.find((w) => sites.every((x) => w.sites.some((y) => y.key === x.key)));
       if (same) { toast(`“${ssid}” comes from the same place as ${same.label}, so it adds nothing new.`, 6000); return; }
       const reach = Math.round(2.45 * Math.max(...sites.map((x) => x.sigma)));
-      addWitness({ type: 'wifi', kind: 'near', ssid, sites, keys: [...new Set(sites.map((x) => x.key))], label: `Wi-Fi “${ssid}”`,
-        detail: (one ? `near ${sites[0].name}` : `near one of ${sites.length} places`) + ` · within about ${G.fmtDist(reach)}` });
+      // If GPS is inside the searched area, GPS may have chosen it (the map follows GPS). Then a lying GPS could
+      // also have made Alibi miss the right shop, so this witness falls together with GPS and can't vouch for it.
+      const g = gpsWitness(), withGps = !!g && G.dist(g.lat, g.lon, c.lat, c.lng) < r;
+      const keys = [...new Set(sites.map((x) => x.key))].concat(withGps ? ['gps'] : []);
+      addWitness({ type: 'wifi', kind: 'near', ssid, sites, keys, fromGps: withGps, label: `Wi-Fi “${ssid}”`,
+        detail: (one ? `near ${sites[0].name}` : `near one of ${sites.length} places`) + ` · within about ${G.fmtDist(reach)}` +
+          (withGps ? ' · looked up around GPS' : '') });
       flyToFit(sites.map((x) => ({ lat: x.lat, lon: x.lon })), 16);
-      toast(one ? `Added: you are near ${sites[0].name}, if that Wi-Fi is real.` : `Added: you are near one of ${sites.length} places. Add another witness to tell which.`, 6000);
+      toast(one ? `Added Wi-Fi “${ssid}”: near ${sites[0].name}. Alibi checks it against the other witnesses.`
+        : `Added Wi-Fi “${ssid}”: near one of ${sites.length} places. The other witnesses tell which, and check it.`, 6000);
     };
   }
 
@@ -1400,8 +1422,8 @@
     }
     if (ev.kind === 'spoof') {
       const a = D.attack, drag = a && a.kind === 'drag' && e.i >= a.from ? ` (Simulated drag at ${a.speed} m/s, started ${e.i - a.from} s ago.)` : lie;
-      return { tone: 'bad', title: 'GPS caught lying', text: `GPS is ${f(e.gate.dist)} from where the ${D.sensor} and gyroscope say: more than their ±${f(e.gate.r95)} allows ` +
-        `(check limit ${f(e.gate.limit)}). Alibi stops trusting GPS, goes on with dead reckoning, and keeps ignoring GPS while it tells the same lie.${drag}` };
+      return { tone: 'bad', title: 'GPS caught lying', text: `GPS is ${f(e.gate.dist)} off the track that speed and gyroscope give, which are good to ±${f(e.gate.r95)}: ` +
+        `too far to be chance. Alibi stops trusting GPS, goes on with dead reckoning, and keeps ignoring GPS while it tells the same lie.${drag}` };
     }
     if (ev.kind === 'clear') {
       return { tone: 'good', title: 'GPS agrees again', text: `GPS is back where dead reckoning says (${f(e.gate.dist)} apart, ±${f(e.gate.r95)}) and no longer tells ` +
