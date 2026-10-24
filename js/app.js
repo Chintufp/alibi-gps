@@ -10,14 +10,14 @@
     drive: { limit: 50, maxSpeed: 60, verb: 'drive', rule: 'Cars stay on roads' },
     boat: { limit: 100, maxSpeed: 25, verb: 'sail', rule: 'Boats stay on water (lakes and rivers)' },
   };
-  const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', motion: '#059669', landmark: '#ea580c', angle: '#0891b2', tower: '#c026d3', sky: '#1e3a8a' };
-  const LABEL_SIDE = { gps: 'right', you: 'left', steps: 'bottom', motion: 'bottom', landmark: 'top', angle: 'top', tower: 'top', sky: 'top' };
+  const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', motion: '#059669', landmark: '#ea580c', angle: '#0891b2', tower: '#c026d3', wifi: '#a16207', sky: '#1e3a8a' };
+  const LABEL_SIDE = { gps: 'right', you: 'left', steps: 'bottom', motion: 'bottom', landmark: 'top', angle: 'top', tower: 'top', wifi: 'top', sky: 'top' };
   const BAD = '#dc2626', SUSPECT = '#d97706';
   // Font Awesome icons
   const ico = (cls) => `<i class="fa-solid ${cls}"></i>`;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ICONS = { gps: 'fa-satellite', you: 'fa-location-dot', steps: 'fa-shoe-prints', motion: 'fa-gauge-high', landmark: 'fa-tower-observation',
-    angle: 'fa-compass-drafting', tower: 'fa-tower-cell', sky: 'fa-star' };
+    angle: 'fa-compass-drafting', tower: 'fa-tower-cell', wifi: 'fa-wifi', sky: 'fa-star' };
   const iconFor = (w) => (w.type === 'sky' && w.body === 'sun' ? 'fa-sun' : ICONS[w.type]);
   const STATE_TEXT = { agrees: `${ico('fa-check')} agrees`, ignored: `${ico('fa-xmark')} ignored`,
     suspect: `${ico('fa-question')} suspect`, unchecked: `${ico('fa-minus')} unchecked` };
@@ -503,6 +503,53 @@
     } catch (e) {
       toast('Could not reach OpenStreetMap (' + e.message + ').');
     }
+  }
+
+  // ---------- Wi-Fi names you can see (real: you read them off your phone's Wi-Fi list) ----------
+  // Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi only reaches
+  // about 100 m. So a name you can see puts you near a mapped place with that name: one of them, if it's a
+  // chain. Works with GPS off and no camera. Anyone can name a hotspot "Lidl", so it is checked like any witness.
+  const WIFI_REACH = 50;            // sigma (m): 95 % of the time within about 120 m of the router
+  function actRadio() {
+    if (state.story) return;
+    $('wifiResult').innerHTML = '';
+    $('wifi').classList.remove('hidden');
+    setTimeout(() => $('wifiName').focus(), 50);
+  }
+  function closeWifi() { $('wifi').classList.add('hidden'); }
+
+  async function findWifi(ev) {
+    ev.preventDefault();
+    const ssid = $('wifiName').value.trim(), wf = Alibi.wifi.parse(ssid), out = $('wifiResult');
+    const say = (html) => { out.innerHTML = `<p class="note">${html}</p>`; };
+    if (wf.kind === 'empty') { say('Type a network name from your phone’s Wi-Fi list, for example the café or shop you are next to.'); return; }
+    if (wf.kind === 'moving') { say(`“${esc(ssid)}” looks like a train, bus, ferry or phone hotspot: it moves with you, so it can’t tell where you are. Try another name.`); return; }
+    if (wf.kind === 'home') { say(`“${esc(ssid)}” looks like a home router’s factory name, which no map knows. Look for a shop, café, library or campus name.`); return; }
+    // search where the map is looking (at least 2 km around its middle, at most 10 km)
+    const c = map.getCenter(), b = map.getBounds();
+    const r = Math.min(10000, Math.max(2000, G.dist(c.lat, c.lng, b.getNorth(), b.getEast())));
+    const where = `within ${G.fmtDist(r)} of the middle of the map`;
+    say(`Looking for “${esc(wf.kind === 'campus' ? 'a university or college' : wf.key)}” on the map ${where}…`);
+    let places;
+    try { places = await OSM.wifiPlaces(OSM.around(c.lat, c.lng, r), wf); } catch (e) { say(`Could not reach OpenStreetMap (${esc(e.message)}). Try again in a minute.`); return; }
+    places = places.map((p) => Object.assign(p, { d: G.dist(c.lat, c.lng, p.lat, p.lon) })).filter((p) => p.d <= r).sort((a, b2) => a.d - b2.d);
+    if (!places.length) { say(`No place matching “${esc(ssid)}” is mapped ${where}. Move the map to where you think you are, or try another name.`); return; }
+    if (places.length > 25) { say(`${places.length} places ${where} fit “${esc(ssid)}”: too many to tell where you are. Try a more specific name, or zoom the map in.`); return; }
+    const sites = places.map((p) => ({ lat: p.lat, lon: p.lon, name: p.name,
+      sigma: Math.hypot(WIFI_REACH, Math.max(p.half, wf.kind === 'campus' ? 200 : 0) / 1.5) }));
+    const one = sites.length === 1, list = places.slice(0, 5).map((p) => `<li>${esc(p.name)} <small>${G.fmtDist(p.d)} from the middle</small></li>`).join('');
+    out.innerHTML = `<p class="note">${one ? `One place ${where} fits:` : `${sites.length} places ${where} fit. Alibi keeps all of them as possibilities, and the other witnesses pick the right one:`}</p>
+      <ul class="wifi-list">${list}${sites.length > 5 ? `<li><small>and ${sites.length - 5} more</small></li>` : ''}</ul>
+      <button id="wifiAdd" class="primary wide"><i class="fa-solid fa-wifi"></i> I can see this Wi-Fi</button>`;
+    $('wifiAdd').onclick = () => {
+      closeWifi();
+      state.witnesses = state.witnesses.filter((w) => !(w.type === 'wifi' && w.ssid.toLowerCase() === ssid.toLowerCase()));
+      const reach = Math.round(2.45 * Math.max(...sites.map((x) => x.sigma)));
+      addWitness({ type: 'wifi', kind: 'near', ssid, sites, label: `Wi-Fi “${ssid}”`,
+        detail: (one ? `near ${sites[0].name}` : `near one of ${sites.length} places`) + ` · within about ${G.fmtDist(reach)}` });
+      flyToFit(sites.map((x) => ({ lat: x.lat, lon: x.lon })), 16);
+      toast(one ? `Added: you are near ${sites[0].name}, if that Wi-Fi is real.` : `Added: you are near one of ${sites.length} places. Add another witness to tell which.`, 6000);
+    };
   }
 
   // ---------- save an area for offline use ----------
@@ -1633,6 +1680,7 @@
       if (w.kind === 'point') drawPoint(w, style);
       else if (w.kind === 'bearing') drawWedge(w, style);
       else if (w.kind === 'range') drawRing(w, style);
+      else if (w.kind === 'near') drawNear(w, style, res);
       else if (w.kind === 'angle') drawAngle(w, style);
       else if (w.kind === 'sky') drawBand(w, style);
     });
@@ -1681,6 +1729,19 @@
     L.polygon(ri > 0 ? [outer, inner] : outer, Object.assign({}, style,
       { fillOpacity: faint ? 0.035 : 0.1, weight: faint ? 1 : 2, opacity: faint ? 0.5 : 0.9, dashArray: faint ? '4 6' : style.dashArray })).addTo(layer.shapes);
     anchorDot(w.lat, w.lon, style.color, `${ico(ICONS.tower)} ${esc(w.label)}`, w.type);
+  }
+
+  // A Wi-Fi name: a circle around each place it could belong to. Only the place nearest the best guess gets a
+  // label, so a chain with many shops doesn't fill the map with names.
+  function drawNear(w, style, res) {
+    const ref = res && res.est, near = (x) => (ref ? G.dist(x.lat, x.lon, ref.lat, ref.lon) : 0);
+    const best = w.sites.reduce((a, x) => (near(x) < near(a) ? x : a), w.sites[0]);
+    for (const x of w.sites) {
+      const p = moved(w, x.lat, x.lon), sigma = w.move ? Math.hypot(x.sigma, w.move.sigma) : x.sigma;
+      L.circle([p.lat, p.lon], Object.assign({}, style, { radius: 2.45 * sigma, weight: x === best ? 2 : 1 })).addTo(layer.shapes);
+      if (x === best) anchorDot(p.lat, p.lon, style.color, `${ico(ICONS.wifi)} ${esc(w.label)}`, w.type);
+      else L.circleMarker([p.lat, p.lon], { radius: 4, color: '#fff', weight: 1, fillColor: style.color, fillOpacity: 1, interactive: false }).addTo(layer.shapes);
+    }
   }
 
   // Seeing A and B a fixed angle apart puts you on an arc of a circle through A and B (the inscribed
@@ -1938,7 +1999,10 @@
   $('actYou').onclick = startYou;
   $('actLandmark').onclick = actLandmark;
   $('actSky').onclick = actSky;
-  $('actTowers').onclick = actTowers;
+  $('actRadio').onclick = actRadio;
+  $('wifiForm').onsubmit = findWifi;
+  $('wifiClose').onclick = closeWifi;
+  $('wifiCells').onclick = () => { closeWifi(); actTowers(); };
   $('actAngle').onclick = actAngle;
   $('actSave').onclick = actSave;
   $('actSpoof').onclick = () => (state.gps.on && state.gps.raw ? cycleSpoof()

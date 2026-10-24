@@ -1,6 +1,6 @@
 /* Alibi engine.
-   Every witness draws a shape on the map: a circle (GPS, your guess, your steps), a line (a landmark
-   you aimed at), a ring (a cell tower) or a band (a star). Where the shapes overlap is where you are,
+   Every witness draws a shape on the map: a circle (GPS, your guess, your steps, a Wi-Fi name), a line
+   (a landmark you aimed at), a ring (a cell tower) or a band (a star). Where the shapes overlap is where you are,
    and the size of the overlap is how sure we are.
    Before trusting a witness we predict what it should say from all the OTHER witnesses. If it is far
    off, it is lying and gets ignored. This is fault detection and exclusion, the same idea receivers
@@ -22,10 +22,10 @@ Alibi.engine = (function () {
 
   // How likely each kind of witness is to be wrong by more than its own ± says (a rough judgement per
   // reading, not a measurement): GPS can be jammed or spoofed, a landmark or star can be mixed up with
-  // another, a guess can be off, a mast can be mapped in the wrong place, a step count can use the wrong
-  // stride. A vehicle's own dead reckoning (odometer and gyroscope) rarely fails that way. Every kind at
+  // another, a guess can be off, a mast can be mapped in the wrong place, anyone can name a Wi-Fi after a
+  // shop, a step count can use the wrong stride. A vehicle's own dead reckoning (odometer and gyroscope) rarely fails that way. Every kind at
   // least MONITOR likely gets its own "what if this one is lying?" check in the protection level.
-  const FAULT = { gps: 1e-2, you: 1e-2, landmark: 1e-2, angle: 1e-2, sky: 1e-2, tower: 1e-2, steps: 1e-2, motion: 1e-3 };
+  const FAULT = { gps: 1e-2, you: 1e-2, landmark: 1e-2, angle: 1e-2, sky: 1e-2, tower: 1e-2, wifi: 1e-2, steps: 1e-2, motion: 1e-3 };
   const MONITOR = 5e-3;
   const PL_FRAC = 0.99;        // the protection level holds 99 % of where you could be, under every hypothesis
   const monitored = (w) => (FAULT[w.type] == null ? 1e-2 : FAULT[w.type]) >= MONITOR;
@@ -131,6 +131,22 @@ Alibi.engine = (function () {
         const d = local ? Math.hypot((lo - w.lon) * M * cw, (la - w.lat) * M) : G.dist(la, lo, w.lat, w.lon);
         const err = d - w.r;
         e[k] = err; v[k] = s2r; ll[k] = -0.5 * err * err / s2r;
+      }
+    } else if (w.kind === 'near') {
+      // within radio range of one of several places (a Wi-Fi name can belong to a chain: any of its shops).
+      // The fit is the best of the places; how far off a cell is = its distance to the nearest of them.
+      const sites = w.sites.map((s) => ({ lat: s.lat, lon: s.lon, cw: Math.cos(s.lat * D2R), s2: s.sigma * s.sigma + slop2 }));
+      const q = new Float64Array(sites.length);
+      for (let k = 0; k < N; k++) {
+        const la = cellLat(k), lo = cellLon(k);
+        let best = Infinity, dBest = 0, s2Best = 1, sum = 0;
+        for (let j = 0; j < sites.length; j++) {
+          const s = sites[j], d = local ? Math.hypot((lo - s.lon) * M * s.cw, (la - s.lat) * M) : G.dist(la, lo, s.lat, s.lon);
+          q[j] = 0.5 * d * d / s.s2 + Math.log(s.s2);
+          if (q[j] < best) { best = q[j]; dBest = d; s2Best = s.s2; }
+        }
+        for (let j = 0; j < q.length; j++) sum += Math.exp(best - q[j]);
+        e[k] = dBest; v[k] = s2Best; ll[k] = -best + Math.log(sum);
       }
     } else if (w.kind === 'sky') {
       // altitude of the body seen from each cell; rows and columns separate, so precompute them
@@ -299,6 +315,7 @@ Alibi.engine = (function () {
       } else if (w.kind === 'bearing') { add(w.lat, w.lon, VIS_RANGE + walked); anchors.push(w); }
       else if (w.kind === 'angle') { add(w.a.lat, w.a.lon, VIS_RANGE + walked); add(w.b.lat, w.b.lon, VIS_RANGE + walked); anchors.push(w.a); }
       else if (w.kind === 'range') { add(w.lat, w.lon, w.r + 3 * w.sigma + walked); anchors.push(w); }
+      else if (w.kind === 'near') for (const p of w.sites) { add(p.lat, p.lon, 3 * Math.hypot(p.sigma, mv.sigma) + walked + 100); anchors.push(p); }
     }
     const sky = ws.filter((w) => w.kind === 'sky').map((w) => {
       const mv = w.move || ZERO_MOVE;
