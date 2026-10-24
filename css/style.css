@@ -224,6 +224,7 @@ body:not(.story-mode) .story { display: none; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, .3); font-size: 16px; border: 2px solid #ea580c;
 }
 .lm-icon.used span { border-color: var(--green); }
+.lm-icon.heard span { border-color: #c026d3; box-shadow: 0 0 0 5px rgba(192, 38, 211, .25), 0 2px 8px rgba(0, 0, 0, .3); }
 .lm-icon.suggest span { animation: bob 1s infinite; border-color: var(--accent); box-shadow: 0 0 0 6px rgba(15, 118, 110, .28); }
 @keyframes bob { 50% { transform: translateY(-4px); } }
 .peak-icon span { width: 24px; height: 24px; font-size: 13px; border-color: #78716c; }

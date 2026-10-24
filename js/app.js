@@ -10,7 +10,7 @@
     drive: { limit: 50, maxSpeed: 60, verb: 'drive', rule: 'Cars stay on roads' },
     boat: { limit: 100, maxSpeed: 25, verb: 'sail', rule: 'Boats stay on water (lakes and rivers)' },
   };
-  const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', landmark: '#ea580c', tower: '#0d9488', sky: '#1e3a8a' };
+  const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', landmark: '#ea580c', tower: '#c026d3', sky: '#1e3a8a' };
   const LABEL_SIDE = { gps: 'right', you: 'left', steps: 'bottom', landmark: 'top', tower: 'top', sky: 'top' };
   const BAD = '#dc2626', SUSPECT = '#d97706';
   const ICONS = { gps: '🛰️', you: '📍', steps: '👣', landmark: '🗼', tower: '📡', sky: '✨' };
@@ -228,9 +228,9 @@
     if (state.story) return;
     for (const lm of state.landmarks) {
       const used = state.witnesses.some((w) => w.lmId === lm.id);
-      const cls = 'lm-icon' + (used ? ' used' : '') + (state.suggestId === lm.id ? ' suggest' : '');
+      const cls = 'lm-icon' + (used ? ' used' : '') + (lm.heard ? ' heard' : '') + (state.suggestId === lm.id ? ' suggest' : '');
       L.marker([lm.lat, lm.lon], { icon: L.divIcon({ className: cls, html: `<span>${lm.icon}</span>`, iconSize: [30, 30], iconAnchor: [15, 15] }) })
-        .bindTooltip(lm.name, { direction: 'top', offset: [0, -14] })
+        .bindTooltip(lm.heard ? `${lm.name} · your phone hears it` : lm.name, { direction: 'top', offset: [0, -14] })
         .on('click', () => aimAtLandmark(lm))
         .addTo(layer.marks);
     }
@@ -286,6 +286,9 @@
   }
 
   // ---------- cell towers (simulated: a web page cannot read them) ----------
+  // Every mast nearby is a landmark you can see and aim at. Only the few your phone "hears" become ring
+  // witnesses: the nearest is the serving cell, whose timing advance gives a fairly good distance; the
+  // neighbours only give signal strength, which is a much rougher distance.
   async function actTowers() {
     if (state.story) return;
     const truth = state.gps.raw;
@@ -295,21 +298,43 @@
     }
     toast('Looking up masts near you…', 0);
     try {
-      const list = (await OSM.masts(truth.lat, truth.lon, 8000))
+      const all = (await OSM.masts(truth.lat, truth.lon, 6000))
         .map((m) => Object.assign(m, { d: G.dist(truth.lat, truth.lon, m.lat, m.lon) }))
-        .filter((m) => m.d > 80).sort((a, b) => a.d - b.d).slice(0, 3);
-      if (!list.length) { toast('No masts are mapped near you.'); return; }
+        .filter((m) => m.d > 50).sort((a, b) => a.d - b.d).slice(0, 40);    // the nearest 40 keep the map readable
+      if (!all.length) { toast('No masts are mapped near you.'); return; }
+      // in range: the nearest mast, plus neighbours up to twice as far (at least 2 km), at most 4
+      const heard = all.filter((m) => m.d <= Math.max(2000, 2 * all[0].d)).slice(0, 4);
+      state.landmarks.forEach((lm) => { lm.heard = false; });
+      for (const m of all) addLandmark({ lat: m.lat, lon: m.lon, name: m.name, kind: 'Mast', icon: '📡' }).heard = heard.includes(m);
       state.witnesses = state.witnesses.filter((w) => w.type !== 'tower');
-      list.forEach((m, i) => {
-        const r = m.d * (1 + [0.12, -0.18, 0.08][i]);    // signal strength only gives a rough distance
-        const sigma = Math.max(150, 0.3 * m.d);
-        addWitness({ type: 'tower', kind: 'range', lat: m.lat, lon: m.lon, r, sigma, label: `Cell mast ${i + 1} (simulated)`,
-          detail: `about ${G.fmtDist(r)} away · ±${G.fmtDist(2 * sigma)}` });
+      heard.forEach((m, i) => {
+        const serving = i === 0;
+        const sigma = serving ? Math.max(120, 0.08 * m.d) : Math.max(250, 0.35 * m.d);
+        const r = Math.max(50, m.d + 1.2 * sigma * noise(m.lat, m.lon));   // a made-up error, the same every time
+        addWitness({ type: 'tower', kind: 'range', lat: m.lat, lon: m.lon, r, sigma,
+          label: `${serving ? 'Serving' : 'Neighbour'} cell (simulated)`,
+          detail: `${serving ? 'timing advance' : 'signal strength'} · about ${G.fmtDist(r)} away · ±${G.fmtDist(2 * sigma)}` });
       });
-      toast(`Added ${list.length} simulated cell masts.`);
+      drawLandmarks();
+      toast(`${all.length} masts nearby. Your phone hears ${heard.length} of them (simulated), so only those get a ring.`, 6000);
     } catch (e) {
       toast('Could not reach OpenStreetMap (' + e.message + ').');
     }
+  }
+
+  // Add a landmark unless one is already within 30 m; returns the landmark that is on the map
+  function addLandmark(lm) {
+    const dup = state.landmarks.find((o) => G.dist(o.lat, o.lon, lm.lat, lm.lon) < 30);
+    if (dup) return dup;
+    const n = Object.assign({ id: 'lm' + state.nextId++, named: lm.name !== 'Mast' }, lm);
+    state.landmarks.push(n);
+    return n;
+  }
+
+  // Repeatable pseudo-random number in [-1, 1] for a place
+  function noise(lat, lon) {
+    const s = Math.sin(lat * 12.9898 + lon * 78.233) * 43758.5453;
+    return 2 * (s - Math.floor(s)) - 1;
   }
 
   // ---------- aiming view: the camera (or a simulated view for demos), then a review before it counts ----------
@@ -658,7 +683,8 @@
     if (storyPhotos[key]) return storyPhotos[key];
     const D = STORY.data;
     const lms = Object.values(D.peaks).map((p) => ({ lat: p.lat, lon: p.lon, name: p.name, kind: 'Hill top', icon: '⛰️' }))
-      .concat(Object.values(D.huts).map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, kind: 'Landmark', icon: '🛖' })));
+      .concat(Object.values(D.huts).map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, kind: 'Landmark', icon: '🛖' })))
+      .concat([D.mast].concat(D.masts).map((m) => ({ lat: m.lat, lon: m.lon, name: m.name, kind: 'Mast', icon: '📡' })));
     let view;
     if (w.kind === 'sky') {
       const p = SKY.radec(w.body, w.time), a = SKY.altAz(p.ra, p.dec, truth.lat, truth.lon, w.time);
@@ -760,7 +786,9 @@
     const icon = (cls, emoji) => L.divIcon({ className: cls, html: `<span>${emoji}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
     for (const p of Object.values(D.peaks)) L.marker([p.lat, p.lon], { icon: icon('peak-icon', '⛰️') }).bindTooltip(p.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
     for (const h of Object.values(D.huts)) L.marker([h.lat, h.lon], { icon: icon('hut-icon', '🛖') }).bindTooltip(h.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
-    L.marker([D.mast.lat, D.mast.lon], { icon: icon('peak-icon', '📡') }).bindTooltip(D.mast.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
+    // the one mast Aino's phone hears, and the others that are only landmarks
+    L.marker([D.mast.lat, D.mast.lon], { icon: icon('lm-icon heard', '📡') }).bindTooltip(`${D.mast.name} · her phone hears it`, { direction: 'top', offset: [0, -12] }).addTo(layer.story);
+    for (const m of D.masts) L.marker([m.lat, m.lon], { icon: icon('peak-icon', '📡') }).bindTooltip(`${m.name} · out of range`, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
     state.story.truthLayer = L.layerGroup().addTo(layer.story);
   }
 

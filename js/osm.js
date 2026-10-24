@@ -58,25 +58,27 @@ Alibi.osm = (function () {
   const bbox = (b) => `${b.s.toFixed(5)},${b.w.toFixed(5)},${b.n.toFixed(5)},${b.e.toFixed(5)}`;
 
   // Landmarks shipped with the app (central Tampere and Helsinki), so demos there need no network.
-  // full = one shipped area covers the whole box, so there is no need to ask the servers at all.
+  // Used straight away when the middle of the search box lies in a shipped area (the edges of a big box
+  // may stick out a little); otherwise only when the servers fail.
   function shipped(b) {
     const F = Alibi.landmarkData;
     if (!F) return null;
-    let full = false;
+    const cLat = (b.s + b.n) / 2, cLon = (b.w + b.e) / 2;
+    let centred = false;
     const elements = [];
     for (const a of F.areas) {
       if (b.n < a.s || b.s > a.n || b.e < a.w || b.w > a.e) continue;
-      if (b.s >= a.s && b.n <= a.n && b.w >= a.w && b.e <= a.e) full = true;
+      if (cLat >= a.s && cLat <= a.n && cLon >= a.w && cLon <= a.e) centred = true;
       for (const el of a.elements) {
         if (el.lat >= b.s && el.lat <= b.n && el.lon >= b.w && el.lon <= b.e) elements.push(el);
       }
     }
-    return elements.length ? { full, elements } : null;
+    return elements.length ? { centred, elements } : null;
   }
 
   async function query(q, b) {
     const local = shipped(b);
-    if (local && local.full) return { elements: local.elements };
+    if (local && local.centred) return { elements: local.elements };
     try {
       return await overpass(q);
     } catch (e) {

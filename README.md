@@ -60,7 +60,7 @@ The "Aino (the truth)" marker is only there for the audience; Alibi never sees i
 | 📍 I'm about here | Tap the map where you think you are (±200 m / 1 km / 5 km) | real |
 | 🗼 Landmark | Loads towers, churches, chimneys and hill tops from OpenStreetMap. Tap one, put the camera's red cross on it and press 📸. Check the reading, then **Add witness**. The compass draws a line. You can also mark a landmark yourself. | real |
 | ✨ Sky | Pick the Sun or a bright star, aim at it and press 📸. Its height above the horizon puts you on a band on the map. | real |
-| 📡 Cell towers | Browsers can't read cell towers, so this uses real mast positions and makes up what a phone would hear | simulated |
+| 📡 Cell towers | Shows the masts around you as landmarks. Only the ones your phone would hear (the nearest, plus neighbours up to twice as far, at most 4) get a pink ring: a narrow one for the serving cell (timing advance) and wide ones for neighbours (signal strength). Browsers can't read cell towers, so which ones you "hear" is made up from your real position. | simulated |
 | 😈 Spoof GPS | Simulates an attack: first a slow drag (3 m/s), then a 120 km jump. The grey dot is your real GPS. | simulated |
 
 **Check every reading before it counts.** After 📸 you see the photo and the reading, and you can:
@@ -135,7 +135,7 @@ servers forbid it; a real app would host its own.
 |---|---|---|
 | GPS | 5–10 m | jammed or spoofed (that's the point) |
 | Landmark line | 2–5° (≈ 50–200 m at 1–3 km) | fog or darkness, or metal near the phone confusing the compass |
-| Cell tower ring | 0.5–5 km | wilderness, open sea. Base stations also use GPS timing, and jamming in Finland has hit mobile networks too. |
+| Cell tower ring | ±100–300 m (serving cell) to ±0.5–5 km (neighbours) | wilderness, open sea; a mast that is mapped in the wrong place; a fake base station (possible, but much harder than faking GPS). Base stations also use GPS timing, and jamming in Finland has hit mobile networks too. |
 | Sky band | ±0.5–1° of tilt ≈ ±50–100 km | clouds. Catches big lies, but can't steer you between rocks. |
 | Steps + compass | error grows ~5–10 % of the distance walked | a long time without another witness |
 | Map rule | – | the map is wrong or out of date |
