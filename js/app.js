@@ -372,9 +372,9 @@
   }
 
   // Too many markers hide each other and catch the wrong tap. Always show the ones that matter (suggested, used,
-  // your own, angle A), then the masts your phone hears, then up to 20 more that don't overlap on screen: the
+  // your own, angle A), then the masts your phone hears, then up to 40 more that don't overlap on screen: the
   // best kinds first (OpenStreetMap's order), masts last. Zooming in spreads them out, so more appear.
-  const MAX_MARKS = 20, MARK_GAP = 40;      // px between marker centres; the icons are 30 px wide
+  const MAX_MARKS = 40, MARK_GAP = 32;      // px between marker centres; the icons are 30 px wide, so they never overlap
   function drawLandmarks() {
     layer.marks.clearLayers();
     if (state.story || state.replay) return;
