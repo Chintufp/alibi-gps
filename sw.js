@@ -2,7 +2,7 @@
    pictures you have already looked at. App files are always fetched fresh when there is a network, so
    updates show up straight away. Map pictures are only kept as you view them, never downloaded in bulk
    (the free OpenStreetMap tile servers forbid that). */
-const SHELL_CACHE = 'alibi-shell-v2';
+const SHELL_CACHE = 'alibi-shell-v3';
 const TILE_CACHE = 'alibi-tiles-v1';
 const MAX_TILES = 2500;
 const SHELL = [

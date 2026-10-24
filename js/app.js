@@ -1006,6 +1006,7 @@
     const log = RP.LOGS[id];
     state.replay = { id, data, i: 0, playing: false, timer: 0, witnesses: [], alert: null, limit: log.mode === 'train' ? 100 : MODES.drive.limit };
     document.body.classList.add('replay-mode');
+    $('replay').classList.remove('hidden');
     drawLandmarks();
     $('replayTitle').textContent = `${log.icon} ${log.label} · real GPS log`;
     $('replaySlider').max = data.ep.length - 1;
@@ -1118,6 +1119,7 @@
     state.replay = null;
     layer.story.clearLayers();
     document.body.classList.remove('replay-mode');
+    $('replay').classList.add('hidden');
     $('replayPlay').textContent = '▶ Play';
     drawLandmarks();
     schedule();
