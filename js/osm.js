@@ -94,14 +94,23 @@ Alibi.osm = (function () {
   const centre = (el) => el.lat != null ? { lat: el.lat, lon: el.lon } : (el.center || null);
 
   // ---------- landmarks you can aim your phone at ----------
+  // Font Awesome icon for each kind: the class for the page, the character for drawing on a canvas
+  const ICONS = {
+    Lighthouse: ['fa-tower-observation', ''], 'Water tower': ['fa-tower-observation', ''],
+    Tower: ['fa-tower-observation', ''], Chimney: ['fa-industry', ''], Mast: ['fa-tower-cell', ''],
+    'Hill top': ['fa-mountain', ''], Church: ['fa-church', ''], Hut: ['fa-house-chimney', ''],
+    Landmark: ['fa-thumbtack', ''],
+  };
+  const iconOf = (kind) => { const i = ICONS[kind] || ICONS.Landmark; return { cls: i[0], glyph: i[1] }; };
+
   const KINDS = [
-    { test: (t) => t.man_made === 'lighthouse', label: 'Lighthouse', icon: '🗼' },
-    { test: (t) => t.man_made === 'water_tower', label: 'Water tower', icon: '🗼' },
-    { test: (t) => t.man_made === 'chimney', label: 'Chimney', icon: '🏭' },
-    { test: (t) => t.man_made === 'mast' || t.man_made === 'communications_tower', label: 'Mast', icon: '📡' },
-    { test: (t) => t.man_made === 'tower', label: 'Tower', icon: '🗼' },
-    { test: (t) => t.natural === 'peak', label: 'Hill top', icon: '⛰️' },
-    { test: (t) => /church|cathedral/.test(t.building || '') || t.amenity === 'place_of_worship', label: 'Church', icon: '⛪' },
+    { test: (t) => t.man_made === 'lighthouse', label: 'Lighthouse' },
+    { test: (t) => t.man_made === 'water_tower', label: 'Water tower' },
+    { test: (t) => t.man_made === 'chimney', label: 'Chimney' },
+    { test: (t) => t.man_made === 'mast' || t.man_made === 'communications_tower', label: 'Mast' },
+    { test: (t) => t.man_made === 'tower', label: 'Tower' },
+    { test: (t) => t.natural === 'peak', label: 'Hill top' },
+    { test: (t) => /church|cathedral/.test(t.building || '') || t.amenity === 'place_of_worship', label: 'Church' },
   ];
 
   const landmarkQuery = (b, max) => `[out:json][timeout:60];(
@@ -121,8 +130,7 @@ Alibi.osm = (function () {
       if (!kind) continue;
       const dup = out.find((o) => G.dist(o.lat, o.lon, c.lat, c.lon) < 30);
       if (dup) { if (!dup.named && t.name) Object.assign(dup, { name: t.name, named: true }); continue; }
-      out.push({ id: el.type + el.id, lat: c.lat, lon: c.lon, name: t.name || kind.label, named: !!t.name,
-        kind: kind.label, icon: kind.icon });
+      out.push({ id: el.type + el.id, lat: c.lat, lon: c.lon, name: t.name || kind.label, named: !!t.name, kind: kind.label });
     }
     return out.sort((a, b) => b.named - a.named).slice(0, 100);
   }
@@ -266,7 +274,7 @@ Alibi.osm = (function () {
     return rasterize(g, feats, mode);
   }
 
-  // ---------- areas saved on this device for offline use ("💾 Save offline") ----------
+  // ---------- areas saved on this device for offline use ("Save offline") ----------
   // Landmarks, masts and lakes (and roads in Drive mode) for a box, kept in the phone's storage.
   // Map pictures are not downloaded in bulk: the free OpenStreetMap tile servers forbid that.
   const SAVED_KEY = 'alibi-saved-areas';
@@ -310,5 +318,5 @@ Alibi.osm = (function () {
     return { landmarks: elements.length, masts: elements.filter((el) => isMast(el.tags)).length, lakes: water.length, roads: roads.length };
   }
 
-  return { landmarks, masts, maskFor, setStaticWater, around, saveArea };
+  return { landmarks, masts, maskFor, setStaticWater, around, saveArea, iconOf };
 })();

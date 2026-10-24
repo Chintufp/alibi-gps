@@ -13,8 +13,16 @@
   const COLORS = { gps: '#2563eb', you: '#7c3aed', steps: '#059669', motion: '#059669', landmark: '#ea580c', angle: '#0891b2', tower: '#c026d3', sky: '#1e3a8a' };
   const LABEL_SIDE = { gps: 'right', you: 'left', steps: 'bottom', motion: 'bottom', landmark: 'top', angle: 'top', tower: 'top', sky: 'top' };
   const BAD = '#dc2626', SUSPECT = '#d97706';
-  const ICONS = { gps: '🛰️', you: '📍', steps: '👣', motion: '🧭', landmark: '🗼', angle: '📐', tower: '📡', sky: '✨' };
-  const STATE_TEXT = { agrees: '✓ agrees', ignored: '✗ ignored', suspect: '? suspect', unchecked: '– unchecked' };
+  // Font Awesome icons
+  const ico = (cls) => `<i class="fa-solid ${cls}"></i>`;
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ICONS = { gps: 'fa-satellite', you: 'fa-location-dot', steps: 'fa-shoe-prints', motion: 'fa-gauge-high', landmark: 'fa-tower-observation',
+    angle: 'fa-compass-drafting', tower: 'fa-tower-cell', sky: 'fa-star' };
+  const iconFor = (w) => (w.type === 'sky' && w.body === 'sun' ? 'fa-sun' : ICONS[w.type]);
+  const STATE_TEXT = { agrees: `${ico('fa-check')} agrees`, ignored: `${ico('fa-xmark')} ignored`,
+    suspect: `${ico('fa-question')} suspect`, unchecked: `${ico('fa-minus')} unchecked` };
+  // the icon font has to be loaded before icons can be drawn on a canvas (simulated camera, story photos)
+  const faReady = document.fonts ? document.fonts.load('900 20px "Font Awesome 6 Free"').catch(() => {}) : Promise.resolve();
 
   const state = {
     mode: 'walk', witnesses: [], nextId: 1,
@@ -129,7 +137,7 @@
     const d = G.dist(prev.lat, prev.lon, p.lat, p.lon), dt = Math.max(1, (now - prev.t) / 1000), m = MODES[state.mode];
     if (d > 3 * (prev.acc + gs.raw.acc) + 20 && d / dt > 1.5 * m.maxSpeed) {
       gs.suspectUntil = now + 60000;
-      gs.jumpMsg = `⚠ GPS jumped ${G.fmtDist(d)} in ${Math.round(dt)} s. Nobody can ${m.verb} that fast.`;
+      gs.jumpMsg = `GPS jumped ${G.fmtDist(d)} in ${Math.round(dt)} s. Nobody can ${m.verb} that fast.`;
     }
   }
 
@@ -191,7 +199,7 @@
     if (!what) return;
     if (what === 'angleA' || what === 'angleB') {
       // no mapped landmark there: use the tapped spot as one
-      const lm = addLandmark({ lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', kind: 'Landmark', icon: '📌' });
+      const lm = addLandmark({ lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', kind: 'Landmark' });
       drawLandmarks();
       onLandmarkClick(lm);
       return;
@@ -202,7 +210,7 @@
       addWitness({ type: 'you', kind: 'point', lat: e.latlng.lat, lon: e.latlng.lng, sigma: state.youRadius / 2,
         label: 'I’m about here', detail: `your guess · ±${G.fmtDist(state.youRadius)}` });
     } else if (what === 'landmark') {
-      const lm = addLandmark({ lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', kind: 'Landmark', icon: '📌' });
+      const lm = addLandmark({ lat: e.latlng.lat, lon: e.latlng.lng, name: 'My landmark', kind: 'Landmark' });
       drawLandmarks();
       aimAtLandmark(lm);
     }
@@ -211,7 +219,7 @@
   // ---------- landmarks ----------
   // Offer the no-network way too: you can always mark a landmark's spot on the map yourself
   function offerPick(msg) {
-    toastHTML('<span></span><div class="chips"><button class="chip" data-pick="1">📌 Mark a landmark on the map myself</button></div>', 8000);
+    toastHTML(`<span></span><div class="chips"><button class="chip" data-pick="1">${ico('fa-thumbtack')} Mark a landmark on the map myself</button></div>`, 8000);
     $('toast').querySelector('span').textContent = msg;
   }
 
@@ -236,7 +244,7 @@
     if (state.story) return;
     const had = state.landmarks.length;
     if (!(await loadLandmarks())) return;
-    offerPick(had ? 'Tap a landmark you can see (🗼 ⛪ 🏭 ⛰️ 📡).' : `Found ${state.landmarks.length}. Tap one you can see.`);
+    offerPick(had ? 'Tap a landmark you can see.' : `Found ${state.landmarks.length}. Tap one you can see.`);
     collapseSheet();
   }
 
@@ -279,7 +287,7 @@
   function aimAngle(a, b) {
     openAim({
       mode: 'angle', lm: a, a, b, step: 1, name: `${a.name} ↔ ${b.name}`, title: `1/2 · Aim at ${a.name}`,
-      hint: 'Put the red cross on A and press 📸. Then turn on the spot (don’t walk) to B and press 📸 again.',
+      hint: 'Put the red cross on A and press Take. Then turn on the spot (don’t walk) to B and press Take again.',
       onLock: (r) => {
         addWitness({ type: 'angle', kind: 'angle', a: { lat: a.lat, lon: a.lon }, b: { lat: b.lat, lon: b.lon },
           ang: r.value, sigma: r.sigma, photo: r.photo, lmIds: [a.id, b.id], label: `${a.name} ↔ ${b.name}`,
@@ -295,8 +303,8 @@
     for (const lm of state.landmarks) {
       const used = state.witnesses.some((w) => w.lmId === lm.id || (w.lmIds && w.lmIds.includes(lm.id)));
       const cls = 'lm-icon' + (used ? ' used' : '') + (lm.heard ? ' heard' : '') + (state.suggestId === lm.id ? ' suggest' : '');
-      L.marker([lm.lat, lm.lon], { icon: L.divIcon({ className: cls, html: `<span>${lm.icon}</span>`, iconSize: [30, 30], iconAnchor: [15, 15] }) })
-        .bindTooltip(lm.heard ? `${lm.name} · your phone hears it` : lm.name, { direction: 'top', offset: [0, -14] })
+      L.marker([lm.lat, lm.lon], { icon: L.divIcon({ className: cls, html: `<span>${ico(OSM.iconOf(lm.kind).cls)}</span>`, iconSize: [30, 30], iconAnchor: [15, 15] }) })
+        .bindTooltip(esc(lm.heard ? `${lm.name} · your phone hears it` : lm.name), { direction: 'top', offset: [0, -14] })
         .on('click', () => onLandmarkClick(lm))
         .addTo(layer.marks);
     }
@@ -308,7 +316,7 @@
     const dir = G.compass8(G.bearing(ref.lat, ref.lon, lm.lat, lm.lon));
     openAim({
       mode: 'bearing', lm, name: lm.name, title: `Aim at ${lm.name}`, calibrate: !!gpsOk,
-      hint: `Put the red cross on it, hold still for a second, then 📸. It should be roughly ${dir} of you.`,
+      hint: `Put the red cross on it, hold still for a second, then press Take. It should be roughly ${dir} of you.`,
       onLock: (r) => {
         if (r.calibrate && gpsOk) {
           const truth = G.bearing(gpsOk.lat, gpsOk.lon, lm.lat, lm.lon);
@@ -342,7 +350,7 @@
     openAim({
       mode: 'elev', body: b.id, name: b.name, title: `Aim at ${b.name}`,
       hint: (b.id === 'sun' ? 'Never look straight at the Sun: aim the phone, look at the screen. ' : '') +
-        `Look ${G.compass8(b.az)}, about ${Math.round(b.alt)}° up. Put the red cross on it, hold still, then 📸.`,
+        `Look ${G.compass8(b.az)}, about ${Math.round(b.alt)}° up. Put the red cross on it, hold still, then press Take.`,
       onLock: (r) => {
         const trueAlt = r.value - SKY.refraction(r.value);
         addWitness({ type: 'sky', kind: 'sky', body: b.id, time: new Date(), alt: trueAlt, sigma: r.sigma, photo: r.photo, label: b.name,
@@ -352,9 +360,11 @@
   }
 
   // ---------- cell towers (simulated: a web page cannot read them) ----------
-  // Every mast nearby is a landmark you can see and aim at. Only the few your phone "hears" become ring
-  // witnesses: the nearest is the serving cell, whose timing advance gives a fairly good distance; the
-  // neighbours only give signal strength, which is a much rougher distance.
+  // Every mast nearby is a landmark you can see and aim at. Masts within 250 m of each other count as one
+  // site (often several operators on the same roof or hill): the phone can't tell them apart well enough
+  // for separate rings. Alibi uses at most three sites, picked in clearly different directions, the way a
+  // GPS receiver prefers satellites spread across the sky. The nearest is the serving cell, whose timing
+  // advance gives a fairly good distance; the others only give signal strength, a much rougher distance.
   async function actTowers() {
     if (state.story) return;
     const truth = state.gps.raw;
@@ -368,21 +378,34 @@
         .map((m) => Object.assign(m, { d: G.dist(truth.lat, truth.lon, m.lat, m.lon) }))
         .filter((m) => m.d > 50).sort((a, b) => a.d - b.d).slice(0, 40);    // the nearest 40 keep the map readable
       if (!all.length) { toast('No masts are mapped near you.'); return; }
-      // in range: the nearest mast, plus neighbours up to twice as far (at least 2 km), at most 4
-      const heard = all.filter((m) => m.d <= Math.max(2000, 2 * all[0].d)).slice(0, 4);
+      const sites = [];
+      for (const m of all) {
+        const s = sites.find((x) => G.dist(x.lat, x.lon, m.lat, m.lon) < 250);
+        if (s) s.masts.push(m);
+        else sites.push({ lat: m.lat, lon: m.lon, d: m.d, masts: [m] });
+      }
+      const range = Math.max(2000, 2 * sites[0].d), dir = (s) => G.bearing(truth.lat, truth.lon, s.lat, s.lon);
+      const heard = [sites[0]];
+      for (const s of sites.slice(1)) {
+        if (heard.length === 3 || s.d > range) break;
+        if (heard.every((h) => Math.abs(G.wrap180(dir(h) - dir(s))) > 45)) heard.push(s);
+      }
       state.landmarks.forEach((lm) => { lm.heard = false; });
-      for (const m of all) addLandmark({ lat: m.lat, lon: m.lon, name: m.name, kind: 'Mast', icon: '📡' }).heard = heard.includes(m);
+      for (const s of sites) {
+        for (const m of s.masts) addLandmark({ lat: m.lat, lon: m.lon, name: m.name, kind: 'Mast' }).heard = heard.includes(s);
+      }
       state.witnesses = state.witnesses.filter((w) => w.type !== 'tower');
-      heard.forEach((m, i) => {
+      heard.forEach((s, i) => {
         const serving = i === 0;
-        const sigma = serving ? Math.max(120, 0.08 * m.d) : Math.max(250, 0.35 * m.d);
-        const r = Math.max(50, m.d + 1.2 * sigma * noise(m.lat, m.lon));   // a made-up error, the same every time
-        addWitness({ type: 'tower', kind: 'range', lat: m.lat, lon: m.lon, r, sigma,
+        const sigma = serving ? Math.max(120, 0.08 * s.d) : Math.max(250, 0.35 * s.d);
+        const r = Math.max(50, s.d + 1.2 * sigma * noise(s.lat, s.lon));   // a made-up error, the same every time
+        addWitness({ type: 'tower', kind: 'range', lat: s.lat, lon: s.lon, r, sigma, serving,
           label: `${serving ? 'Serving' : 'Neighbour'} cell (simulated)`,
-          detail: `${serving ? 'timing advance' : 'signal strength'} · about ${G.fmtDist(r)} away · ±${G.fmtDist(2 * sigma)}` });
+          detail: `${serving ? 'timing advance' : 'signal strength'} · about ${G.fmtDist(r)} away · ±${G.fmtDist(2 * sigma)}` +
+            (s.masts.length > 1 ? ` · ${s.masts.length} masts at one site` : '') });
       });
       drawLandmarks();
-      toast(`${all.length} masts nearby. Your phone hears ${heard.length} of them (simulated), so only those get a ring.`, 6000);
+      toast(`${all.length} masts nearby in ${sites.length} sites. Your phone uses ${heard.length} of them (simulated), spread around you, so only those get a ring.`, 7000);
     } catch (e) {
       toast('Could not reach OpenStreetMap (' + e.message + ').');
     }
@@ -460,7 +483,7 @@
     sim.on = on;
     $('simView').classList.toggle('hidden', !on);
     $('cam').classList.toggle('hidden', on);
-    $('simToggle').textContent = on ? '📷 Use camera' : '🎮 Simulated view';
+    $('simToggle').innerHTML = on ? `${ico('fa-camera')} Use camera` : `${ico('fa-gamepad')} Simulated view`;
   }
 
   // Where the simulated camera stands: your real position (even while GPS is spoofed), else Alibi's guess
@@ -515,7 +538,7 @@
     stopCamera();
   }
 
-  // 📸 Take: freeze the picture and the reading, then let the user check and correct it
+  // Take: freeze the picture and the reading, then let the user check and correct it
   function takeShot() {
     if (!aim) return;
     if (aim.mode === 'angle') { takeAngleShot(); return; }
@@ -540,7 +563,7 @@
     ctx.stroke();
   }
 
-  // Angle: the first 📸 remembers where A is (gyroscope heading), the second measures how far you turned to B
+  // Angle: the first Take remembers where A is (gyroscope heading), the second measures how far you turned to B
   function takeAngleShot() {
     let yaw = null, spread = 0;
     if (sim.on) yaw = sim.heading;
@@ -555,7 +578,7 @@
       aim.step = 2;
       aim.lm = aim.b;
       $('aimTitle').textContent = `2/2 · Now turn to ${aim.b.name}`;
-      $('aimHint').textContent = 'Turn on the spot (don’t walk) until the red cross is on B, then 📸.';
+      $('aimHint').textContent = 'Turn on the spot (don’t walk) until the red cross is on B, then press Take.';
       toast(`A is saved. Now turn to ${aim.b.name}.`);
       return;
     }
@@ -572,7 +595,7 @@
     aim.lm = aim.a;
     aim.first = null;
     $('aimTitle').textContent = `1/2 · Aim at ${aim.a.name}`;
-    $('aimHint').textContent = 'Put the red cross on A and press 📸. Then turn on the spot (don’t walk) to B and press 📸 again.';
+    $('aimHint').textContent = 'Put the red cross on A and press Take. Then turn on the spot (don’t walk) to B and press Take again.';
   }
 
   // A 4:3 picture around the crosshair, from the camera or the simulated view
@@ -623,16 +646,16 @@
   // Where a reading comes from, and how far to trust it (± in degrees, about 95 %)
   const SOURCES = {
     bearing: [
-      { id: 'phone', label: '📱 Phone compass', pm: () => (state.compassCalibrated ? 4 : 7) },
-      { id: 'hand', label: '🧭 Hand compass', pm: () => 3 },
+      { id: 'phone', icon: 'fa-mobile-screen', label: 'Phone compass', pm: () => (state.compassCalibrated ? 4 : 7) },
+      { id: 'hand', icon: 'fa-compass', label: 'Hand compass', pm: () => 3 },
     ],
     elev: [
-      { id: 'phone', label: '📱 Phone tilt', pm: () => 1 },
-      { id: 'tool', label: '📐 Inclinometer / sextant', pm: () => 0.4 },
+      { id: 'phone', icon: 'fa-mobile-screen', label: 'Phone tilt', pm: () => 1 },
+      { id: 'tool', icon: 'fa-ruler-combined', label: 'Inclinometer / sextant', pm: () => 0.4 },
     ],
     angle: [
-      { id: 'phone', label: '📱 Phone gyroscope', pm: () => 2 },
-      { id: 'tool', label: '📐 Sextant / protractor', pm: () => 0.4 },
+      { id: 'phone', icon: 'fa-mobile-screen', label: 'Phone gyroscope', pm: () => 2 },
+      { id: 'tool', icon: 'fa-ruler-combined', label: 'Sextant / protractor', pm: () => 0.4 },
     ],
   };
 
@@ -665,7 +688,7 @@
     box.innerHTML = '';
     for (const src of SOURCES[aim.mode]) {
       const b = document.createElement('button');
-      b.textContent = src.label;
+      b.innerHTML = `${ico(src.icon)} ${src.label}`;
       b.className = src.id === aim.source ? 'on' : '';
       b.onclick = () => switchSource(src.id);
       box.appendChild(b);
@@ -803,10 +826,11 @@
       const top = horizon - Math.atan2(LM_HEIGHT[lm.kind] || 40, d) * G.R2D * k;
       const size = Math.max(14, Math.min(56, 2400 / Math.sqrt(d)));
       ctx.fillStyle = night ? '#475569' : '#1f2937';
-      ctx.fillRect(x - 1.5, top, 3, Math.max(0, horizon - top));
-      ctx.font = `${size}px serif`;
+      if (lm.kind !== 'Hill top') ctx.fillRect(x - 1.5, top, 3, Math.max(0, horizon - top));   // towers stand on a post; hills don't
+      ctx.font = `900 ${Math.round(size * 0.8)}px "Font Awesome 6 Free"`;
       ctx.textAlign = 'center';
-      ctx.fillText(lm.icon || '🗼', x, top + size * 0.15);
+      ctx.fillStyle = night ? '#cbd5e1' : '#1f2937';
+      ctx.fillText(OSM.iconOf(lm.kind).glyph, x, top);
       const isTarget = v.target === lm || (v.targetName && v.targetName === lm.name);
       if (isTarget || d < 2500) tag(ctx, `${lm.name} · ${G.fmtDist(d)}`, x, top - size - 2, isTarget);
     }
@@ -844,9 +868,9 @@
     const key = `${w.id}:${(w.kind === 'sky' ? w.alt : w.brg).toFixed(2)}:${truth.lat.toFixed(5)}`;
     if (storyPhotos[key]) return storyPhotos[key];
     const D = STORY.data;
-    const lms = Object.values(D.peaks).map((p) => ({ lat: p.lat, lon: p.lon, name: p.name, kind: 'Hill top', icon: '⛰️' }))
-      .concat(Object.values(D.huts).map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, kind: 'Landmark', icon: '🛖' })))
-      .concat([D.mast].concat(D.masts).map((m) => ({ lat: m.lat, lon: m.lon, name: m.name, kind: 'Mast', icon: '📡' })));
+    const lms = Object.values(D.peaks).map((p) => ({ lat: p.lat, lon: p.lon, name: p.name, kind: 'Hill top' }))
+      .concat(Object.values(D.huts).map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, kind: 'Hut' })))
+      .concat([D.mast].concat(D.masts).map((m) => ({ lat: m.lat, lon: m.lon, name: m.name, kind: 'Mast' })));
     let view;
     if (w.kind === 'sky') {
       const p = SKY.radec(w.body, w.time), a = SKY.altAz(p.ra, p.dec, truth.lat, truth.lon, w.time);
@@ -928,7 +952,8 @@
   }
 
   // ---------- Lapland demo ----------
-  function startStory() {
+  async function startStory() {
+    await faReady;    // the story's witness photos draw icons, so the icon font must be there first
     if (state.replay) exitReplay();
     state.pending = null;
     hideToast();
@@ -946,12 +971,12 @@
     layer.story.clearLayers();
     const D = STORY.data;
     L.polyline(STORY.route, { color: '#7c2d12', weight: 3, opacity: 0.6, dashArray: '2 7', interactive: false }).addTo(layer.story);
-    const icon = (cls, emoji) => L.divIcon({ className: cls, html: `<span>${emoji}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
-    for (const p of Object.values(D.peaks)) L.marker([p.lat, p.lon], { icon: icon('peak-icon', '⛰️') }).bindTooltip(p.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
-    for (const h of Object.values(D.huts)) L.marker([h.lat, h.lon], { icon: icon('hut-icon', '🛖') }).bindTooltip(h.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
+    const icon = (cls, fa) => L.divIcon({ className: cls, html: `<span>${ico(fa)}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+    for (const p of Object.values(D.peaks)) L.marker([p.lat, p.lon], { icon: icon('peak-icon', 'fa-mountain') }).bindTooltip(p.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
+    for (const h of Object.values(D.huts)) L.marker([h.lat, h.lon], { icon: icon('hut-icon', 'fa-house-chimney') }).bindTooltip(h.name, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
     // the one mast Aino's phone hears, and the others that are only landmarks
-    L.marker([D.mast.lat, D.mast.lon], { icon: icon('lm-icon heard', '📡') }).bindTooltip(`${D.mast.name} · her phone hears it`, { direction: 'top', offset: [0, -12] }).addTo(layer.story);
-    for (const m of D.masts) L.marker([m.lat, m.lon], { icon: icon('peak-icon', '📡') }).bindTooltip(`${m.name} · out of range`, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
+    L.marker([D.mast.lat, D.mast.lon], { icon: icon('lm-icon heard', 'fa-tower-cell') }).bindTooltip(`${D.mast.name} · her phone hears it`, { direction: 'top', offset: [0, -12] }).addTo(layer.story);
+    for (const m of D.masts) L.marker([m.lat, m.lon], { icon: icon('peak-icon', 'fa-tower-cell') }).bindTooltip(`${m.name} · out of range`, { direction: 'top', offset: [0, -10] }).addTo(layer.story);
     state.story.truthLayer = L.layerGroup().addTo(layer.story);
   }
 
@@ -963,12 +988,12 @@
     $('storyTitle').textContent = st.title;
     $('storyText').textContent = st.text;
     $('storyBack').disabled = k === 0;
-    $('storyNext').textContent = k === STORY.count - 1 ? 'Start again ↺' : 'Next ▶';
+    $('storyNext').innerHTML = k === STORY.count - 1 ? `${ico('fa-rotate-left')} Start again` : `Next ${ico('fa-chevron-right')}`;
     const tl = state.story.truthLayer;
     tl.clearLayers();
     L.polyline(st.track, { color: '#7c2d12', weight: 4, opacity: 0.9, interactive: false }).addTo(tl);
     L.marker([st.truth.lat, st.truth.lon], {
-      icon: L.divIcon({ className: 'truth-icon', html: '<span>🥾</span><em>Aino (the truth)</em>', iconSize: [30, 30], iconAnchor: [15, 15] }),
+      icon: L.divIcon({ className: 'truth-icon', html: `<span>${ico('fa-person-hiking')}</span><em>Aino (the truth)</em>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
       interactive: false, zIndexOffset: 1000,
     }).addTo(tl);
     schedule();
@@ -991,7 +1016,7 @@
 
   function actReplay() {
     openPicker('Replay a real GPS recording', Object.entries(RP.LOGS).map(([id, l]) => ({
-      html: `<b>${l.icon} ${l.label}</b><small>organisers’ data</small>`,
+      html: `<b>${ico(l.icon)} ${l.label}</b><small>organisers’ data</small>`,
       onPick: () => startReplay(id),
     })), 'Recorded with Google’s GnssLogger app. Watch GPS drop out in tunnels and Alibi carry on with speed and direction.');
   }
@@ -1008,7 +1033,7 @@
     document.body.classList.add('replay-mode');
     $('replay').classList.remove('hidden');
     drawLandmarks();
-    $('replayTitle').textContent = `${log.icon} ${log.label} · real GPS log`;
+    $('replayTitle').innerHTML = `${ico(log.icon)} ${log.label} · real GPS log`;
     $('replaySlider').max = data.ep.length - 1;
     layer.story.clearLayers();
     L.polyline(data.track, { color: '#64748b', weight: 3, opacity: 0.55, interactive: false }).addTo(layer.story);
@@ -1035,7 +1060,7 @@
     }
     R.witnesses = ws;
     const diag = RP.diagnose(e, R.data.hasAgc);
-    R.alert = diag ? '⚠ ' + diag.text : null;
+    R.alert = diag ? diag.text : null;
     // GPS just came back: does it land where dead reckoning said?
     R.exitMark.clearLayers();
     let back = '';
@@ -1043,8 +1068,8 @@
       const ok = e.back.dist <= 3 * e.back.sigma, prev = ep[i - 1];
       const how = prev && prev.dr && prev.dr.gyro ? 'speed + gyroscope' : 'speed + direction';
       back = ` GPS is back after ${e.back.gap} s: ${G.fmtDist(e.back.dist)} from where ${how} said, after ${G.fmtDist(e.back.since)} without GPS` +
-        (ok ? ' (inside the ± circle ✓).' : ' (outside the ± circle: check it).');
-      L.marker([e.lat, e.lon], { icon: L.divIcon({ className: 'truth-icon', html: '<span>🎯</span><em>GPS back</em>', iconSize: [30, 30], iconAnchor: [15, 15] }), interactive: false }).addTo(R.exitMark);
+        (ok ? ' (inside the ± circle).' : ' (outside the ± circle: check it).');
+      L.marker([e.lat, e.lon], { icon: L.divIcon({ className: 'truth-icon', html: `<span>${ico('fa-crosshairs')}</span><em>GPS back</em>`, iconSize: [30, 30], iconAnchor: [15, 15] }), interactive: false }).addTo(R.exitMark);
     }
     const time = new Date(e.t * 1000).toISOString().slice(11, 19);
     const spd = e.spd != null ? `${Math.round(e.spd * 3.6)} km/h` : e.dr ? `~${Math.round(e.dr.spd * 3.6)} km/h` : '';
@@ -1061,7 +1086,7 @@
   function toggleReplay() {
     const R = state.replay;
     R.playing = !R.playing;
-    $('replayPlay').textContent = R.playing ? '⏸ Pause' : '▶ Play';
+    $('replayPlay').innerHTML = R.playing ? `${ico('fa-pause')} Pause` : `${ico('fa-play')} Play`;
     clearInterval(R.timer);
     if (!R.playing) return;
     R.timer = setInterval(() => {
@@ -1120,7 +1145,7 @@
     layer.story.clearLayers();
     document.body.classList.remove('replay-mode');
     $('replay').classList.add('hidden');
-    $('replayPlay').textContent = '▶ Play';
+    $('replayPlay').innerHTML = `${ico('fa-play')} Play`;
     drawLandmarks();
     schedule();
   }
@@ -1167,7 +1192,7 @@
     for (const m of msgs) {
       const d = document.createElement('div');
       d.className = 'alert';
-      d.textContent = m;
+      d.innerHTML = `${ico('fa-triangle-exclamation')} ${esc(m)}`;
       box.appendChild(d);
     }
   }
@@ -1179,7 +1204,7 @@
       const st = res.status && res.status[i] ? res.status[i].state : 'unchecked';
       const li = document.createElement('li');
       const icon = w.photo ? `<img class="thumb" src="${w.photo}" alt="">`
-        : `<span class="wi" style="background:${COLORS[w.type]}22">${ICONS[w.type]}</span>`;
+        : `<span class="wi" style="background:${COLORS[w.type]}22;color:${COLORS[w.type]}">${ico(iconFor(w))}</span>`;
       li.innerHTML = `${icon}<div class="wt"><b></b><small></small></div><span class="pill ${st}">${STATE_TEXT[st]}</span>`;
       li.querySelector('b').textContent = w.label;
       li.querySelector('small').textContent = w.detail || '';
@@ -1193,7 +1218,7 @@
     });
     if (res.maskUsed) {
       const li = document.createElement('li');
-      li.innerHTML = `<span class="wi" style="background:#e2e8f0">🗺️</span><div class="wt"><b>Map rule</b><small>${MODES[state.story ? 'walk' : state.mode].rule}</small></div><span class="pill rule">on</span>`;
+      li.innerHTML = `<span class="wi" style="background:#e2e8f0">${ico('fa-map')}</span><div class="wt"><b>Map rule</b><small>${MODES[state.story ? 'walk' : state.mode].rule}</small></div><span class="pill rule">on</span>`;
       el.appendChild(li);
     }
   }
@@ -1226,7 +1251,7 @@
   function drawPoint(w, style) {
     const p = moved(w, w.lat, w.lon), sigma = w.move ? Math.hypot(w.sigma, w.move.sigma) : w.sigma;
     L.circle([p.lat, p.lon], Object.assign({}, style, { radius: Math.max(6, 2 * sigma) })).addTo(layer.shapes);
-    anchorDot(p.lat, p.lon, style.color, `${ICONS[w.type]} ${w.label}`, w.type);
+    anchorDot(p.lat, p.lon, style.color, `${ico(iconFor(w))} ${esc(w.label)}`, w.type);
   }
 
   function drawWedge(w, style) {
@@ -1239,7 +1264,7 @@
     L.polygon(pts, Object.assign({}, style, { fillOpacity: 0.14, weight: 1 })).addTo(layer.shapes);
     L.polyline([shift({ lat: w.lat, lon: w.lon }), shift(G.dest(w.lat, w.lon, back, len))],
       { color: style.color, weight: 2, dashArray: '5 5', interactive: false }).addTo(layer.shapes);
-    anchorDot(w.lat, w.lon, style.color, `🗼 ${w.label}`, w.type);
+    anchorDot(w.lat, w.lon, style.color, `${ico(ICONS.landmark)} ${esc(w.label)}`, w.type);
   }
 
   function drawRing(w, style) {
@@ -1252,8 +1277,11 @@
         inner.push([mq.lat, mq.lon]);
       }
     }
-    L.polygon(ri > 0 ? [outer, inner] : outer, Object.assign({}, style, { fillOpacity: 0.08, weight: 1.5 })).addTo(layer.shapes);
-    anchorDot(w.lat, w.lon, style.color, `📡 ${w.label}`, w.type);
+    // neighbour cells only give a rough distance: draw their wide rings faintly so the serving cell stands out
+    const faint = w.serving === false;
+    L.polygon(ri > 0 ? [outer, inner] : outer, Object.assign({}, style,
+      { fillOpacity: faint ? 0.035 : 0.1, weight: faint ? 1 : 2, opacity: faint ? 0.5 : 0.9, dashArray: faint ? '4 6' : style.dashArray })).addTo(layer.shapes);
+    anchorDot(w.lat, w.lon, style.color, `${ico(ICONS.tower)} ${esc(w.label)}`, w.type);
   }
 
   // Seeing A and B a fixed angle apart puts you on an arc of a circle through A and B (the inscribed
@@ -1282,8 +1310,8 @@
     L.polygon(wide.concat(narrow.slice().reverse()), Object.assign({}, style, { fillOpacity: 0.16, weight: 1 })).addTo(layer.shapes);
     L.polyline(arc(Math.abs(w.ang)), { color: style.color, weight: 2, dashArray: '5 5', interactive: false }).addTo(layer.shapes);
     const [la, lb] = w.label.split(' ↔ ');
-    anchorDot(w.a.lat, w.a.lon, style.color, `📐 A: ${la || 'A'}`, w.type);
-    anchorDot(w.b.lat, w.b.lon, style.color, `📐 B: ${lb || 'B'}`, w.type);
+    anchorDot(w.a.lat, w.a.lon, style.color, `${ico(ICONS.angle)} A: ${esc(la || 'A')}`, w.type);
+    anchorDot(w.b.lat, w.b.lon, style.color, `${ico(ICONS.angle)} B: ${esc(lb || 'B')}`, w.type);
   }
 
   // A star seen at a given height is on a ring around the point where it is overhead: draw that band
@@ -1316,7 +1344,7 @@
     }
     if (label) {
       L.marker([label.lat, label.lon], {
-        icon: L.divIcon({ className: 'band-label', html: `<span>✨ ${w.label}</span>`, iconSize: null }), interactive: false,
+        icon: L.divIcon({ className: 'band-label', html: `<span>${ico(iconFor(w))} ${esc(w.label)}</span>`, iconSize: null }), interactive: false,
       }).addTo(layer.shapes);
     }
   }
@@ -1374,7 +1402,7 @@
     }
     const id = best ? best.lm.id : null;
     if (id !== state.suggestId) { state.suggestId = id; drawLandmarks(); }
-    $('hint').textContent = best ? `👉 Next: aim at ${best.lm.name} (${G.compass8(best.b)}, ${G.fmtDist(best.d)})` : '';
+    $('hint').innerHTML = best ? `${ico('fa-arrow-right')} Next: aim at ${esc(best.lm.name)} (${G.compass8(best.b)}, ${G.fmtDist(best.d)})` : '';
   }
 
   // ---------- small UI helpers ----------
@@ -1498,5 +1526,5 @@
   refreshButtons();
   schedule();
   if (/[?&]demo\b/.test(location.search)) startStory();
-  else toast('Try 🎬 Lapland demo, or turn on 🛰️ GPS and add witnesses.', 6000);
+  else toast('Try the Lapland demo, or turn on GPS and add witnesses.', 6000);
 })();

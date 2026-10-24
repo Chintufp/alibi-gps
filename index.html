@@ -7,7 +7,8 @@
   <meta name="description" content="GPS is just one witness. Alibi checks it against landmarks, the stars, cell towers and your own steps, and ignores the one that is lying.">
   <meta name="theme-color" content="#0f172a">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
   <div id="map"></div>
@@ -26,27 +27,27 @@
   <section id="sheet" class="sheet">
     <button id="sheetHandle" class="handle" aria-label="Show or hide the panel"></button>
     <div class="modes">
-      <button class="mode active" data-mode="walk">🚶 Walk</button>
-      <button class="mode" data-mode="drive">🚗 Drive</button>
-      <button class="mode" data-mode="boat">🚤 Boat</button>
+      <button class="mode active" data-mode="walk"><i class="fa-solid fa-person-walking"></i> Walk</button>
+      <button class="mode" data-mode="drive"><i class="fa-solid fa-car"></i> Drive</button>
+      <button class="mode" data-mode="boat"><i class="fa-solid fa-sailboat"></i> Boat</button>
     </div>
     <div class="actions">
-      <button class="act" id="actGps"><span>🛰️</span>GPS</button>
-      <button class="act" id="actYou"><span>📍</span>I’m about here</button>
-      <button class="act" id="actLandmark"><span>🗼</span>Landmark</button>
-      <button class="act" id="actAngle"><span>📐</span>Angle A↔B</button>
-      <button class="act" id="actSky"><span>✨</span>Sky</button>
-      <button class="act" id="actTowers"><span>📡</span>Cell towers</button>
-      <button class="act danger" id="actSpoof"><span>😈</span><em id="spoofLabel">Spoof GPS</em></button>
-      <button class="act" id="actSave"><span>💾</span>Save offline</button>
+      <button class="act" id="actGps"><i class="fa-solid fa-satellite"></i>GPS</button>
+      <button class="act" id="actYou"><i class="fa-solid fa-location-dot"></i>I’m about here</button>
+      <button class="act" id="actLandmark"><i class="fa-solid fa-tower-observation"></i>Landmark</button>
+      <button class="act" id="actAngle"><i class="fa-solid fa-compass-drafting"></i>Angle A↔B</button>
+      <button class="act" id="actSky"><i class="fa-solid fa-star"></i>Sky</button>
+      <button class="act" id="actTowers"><i class="fa-solid fa-tower-cell"></i>Cell towers</button>
+      <button class="act danger" id="actSpoof"><i class="fa-solid fa-user-secret"></i><em id="spoofLabel">Spoof GPS</em></button>
+      <button class="act" id="actSave"><i class="fa-solid fa-download"></i>Save offline</button>
     </div>
     <h4>Witnesses</h4>
     <ul id="witnesses" class="witnesses"></ul>
     <div class="footer-row">
-      <button id="actStory" class="primary">🎬 Lapland demo</button>
-      <button id="actReplay" title="Replay the organisers’ real GPS recordings">🚆 Real log</button>
+      <button id="actStory" class="primary"><i class="fa-solid fa-person-hiking"></i> Lapland demo</button>
+      <button id="actReplay" title="Replay the organisers’ real GPS recordings"><i class="fa-solid fa-train"></i> Real log</button>
       <button id="actClear">Clear</button>
-      <button id="actSettings" aria-label="Settings">⚙️</button>
+      <button id="actSettings" aria-label="Settings"><i class="fa-solid fa-gear"></i></button>
     </div>
   </section>
 
@@ -54,14 +55,14 @@
   <section id="replay" class="replay hidden">
     <div class="story-head">
       <span id="replayTitle">Real GPS log</span>
-      <button id="replayExit">✕ Exit</button>
+      <button id="replayExit"><i class="fa-solid fa-xmark"></i> Exit</button>
     </div>
     <canvas id="replayChart" title="Click to jump there"></canvas>
     <input id="replaySlider" type="range" min="0" max="0" value="0" aria-label="Time in the recording">
     <div class="story-nav">
-      <button id="replayPrev" title="Previous GPS outage">⏮ Outage</button>
-      <button id="replayPlay" class="primary">▶ Play</button>
-      <button id="replayNext" title="Next GPS outage">Outage ⏭</button>
+      <button id="replayPrev" title="Previous GPS outage"><i class="fa-solid fa-backward-step"></i> Outage</button>
+      <button id="replayPlay" class="primary"><i class="fa-solid fa-play"></i> Play</button>
+      <button id="replayNext" title="Next GPS outage">Outage <i class="fa-solid fa-forward-step"></i></button>
     </div>
     <p id="replayText"></p>
     <ul id="replayWitnesses" class="witnesses compact"></ul>
@@ -71,14 +72,14 @@
   <section id="story" class="story">
     <div class="story-head">
       <span id="storyStep"></span>
-      <button id="storyExit">✕ Exit demo</button>
+      <button id="storyExit"><i class="fa-solid fa-xmark"></i> Exit demo</button>
     </div>
     <h3 id="storyTitle"></h3>
     <p id="storyText"></p>
     <ul id="storyWitnesses" class="witnesses compact"></ul>
     <div class="story-nav">
-      <button id="storyBack">◀ Back</button>
-      <button id="storyNext" class="primary">Next ▶</button>
+      <button id="storyBack"><i class="fa-solid fa-chevron-left"></i> Back</button>
+      <button id="storyNext" class="primary">Next <i class="fa-solid fa-chevron-right"></i></button>
     </div>
   </section>
 
@@ -90,7 +91,7 @@
     <div class="aim-top">
       <div class="aim-top-row">
         <b id="aimTitle"></b>
-        <button id="simToggle" class="sim-toggle">🎮 Simulated view</button>
+        <button id="simToggle" class="sim-toggle"><i class="fa-solid fa-gamepad"></i> Simulated view</button>
       </div>
       <p id="aimHint"></p>
     </div>
@@ -101,7 +102,7 @@
       </div>
       <div class="aim-buttons">
         <button id="aimCancel">Cancel</button>
-        <button id="aimLock">📸 Take</button>
+        <button id="aimLock"><i class="fa-solid fa-camera"></i> Take</button>
       </div>
     </div>
     <div id="review" class="review hidden">
@@ -119,8 +120,8 @@
       <label class="field">How sure? ± degrees<input id="reviewPm" type="number" step="0.1" min="0.1"></label>
       <label class="calib hidden" id="reviewCalibRow"><input type="checkbox" id="reviewCalib"> Use this to calibrate my phone compass (GPS is trustworthy right now)</label>
       <div class="aim-buttons">
-        <button id="reviewRetake">↺ Retake</button>
-        <button id="reviewAdd">✓ Add witness</button>
+        <button id="reviewRetake"><i class="fa-solid fa-rotate-left"></i> Retake</button>
+        <button id="reviewAdd"><i class="fa-solid fa-check"></i> Add witness</button>
       </div>
     </div>
   </section>
@@ -149,15 +150,15 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/geo.js?v=6"></script>
-  <script src="js/sky.js?v=6"></script>
-  <script src="js/engine.js?v=6"></script>
-  <script src="js/osm.js?v=6"></script>
-  <script src="js/sensors.js?v=6"></script>
-  <script src="js/scenario-data.js?v=6"></script>
-  <script src="js/landmark-data.js?v=6"></script>
-  <script src="js/scenario.js?v=6"></script>
-  <script src="js/replay.js?v=6"></script>
-  <script src="js/app.js?v=6"></script>
+  <script src="js/geo.js?v=7"></script>
+  <script src="js/sky.js?v=7"></script>
+  <script src="js/engine.js?v=7"></script>
+  <script src="js/osm.js?v=7"></script>
+  <script src="js/sensors.js?v=7"></script>
+  <script src="js/scenario-data.js?v=7"></script>
+  <script src="js/landmark-data.js?v=7"></script>
+  <script src="js/scenario.js?v=7"></script>
+  <script src="js/replay.js?v=7"></script>
+  <script src="js/app.js?v=7"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
    pictures you have already looked at. App files are always fetched fresh when there is a network, so
    updates show up straight away. Map pictures are only kept as you view them, never downloaded in bulk
    (the free OpenStreetMap tile servers forbid that). */
-const SHELL_CACHE = 'alibi-shell-v3';
+const SHELL_CACHE = 'alibi-shell-v4';
 const TILE_CACHE = 'alibi-tiles-v1';
 const MAX_TILES = 2500;
 const SHELL = [
@@ -12,6 +12,8 @@ const SHELL = [
   './data/train.json', './data/car.json',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/webfonts/fa-solid-900.woff2',
 ];
 
 self.addEventListener('install', (e) => {
@@ -31,7 +33,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (isTile(url)) e.respondWith(tile(req));
-  else if (url.origin === self.location.origin || url.hostname === 'unpkg.com') e.respondWith(networkFirst(req));
+  else if (url.origin === self.location.origin || url.hostname === 'unpkg.com' || url.hostname === 'cdnjs.cloudflare.com') e.respondWith(networkFirst(req));
 });
 
 async function networkFirst(req) {

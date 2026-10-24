@@ -7,8 +7,8 @@ Alibi.replay = (function () {
 
   const G = Alibi.geo;
   const LOGS = {
-    train: { file: 'data/train.json', icon: '🚆', label: 'Train ride (France)', mode: 'train' },
-    car: { file: 'data/car.json', icon: '🚗', label: 'Car drive (Espoo)', mode: 'car' },
+    train: { file: 'data/train.json', icon: 'fa-train', label: 'Train ride (France)', mode: 'train' },
+    car: { file: 'data/car.json', icon: 'fa-car', label: 'Car drive (Espoo)', mode: 'car' },
   };
   const loaded = {};
 

@@ -350,7 +350,7 @@ Alibi.engine = (function () {
     Object.assign(res, verdict(res, ws, opts.alertLimit || 150));
     for (const i of f.excluded) {
       const w = ws[i];
-      res.alerts.push(`⚠ ${w.label} disagrees with the other ${f.kept.length} witnesses, so it is ignored.` +
+      res.alerts.push(`${w.label} disagrees with the other ${f.kept.length} witnesses, so it is ignored.` +
         (w.type === 'gps' ? ' Possible spoofing.' : ''));
     }
     return res;

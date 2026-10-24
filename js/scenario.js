@@ -115,14 +115,14 @@ Alibi.scenario = (function () {
     },
     {
       at: 4320, view: 'night', title: 'Night at Luulampi',
-      alert: '⚠ GPS jumped 216 km in one second. That is impossible on foot.',
+      alert: 'GPS jumped 216 km in one second. That is impossible on foot.',
       text: 'GPS suddenly says she is at Murmansk airport, 216 km away. She aims her phone at Polaris and Vega. The stars agree with her steps, not with GPS. Signals can be jammed. The stars can’t.',
       make: (t) => [gpsAt(MURMANSK, 'says Murmansk airport (simulated spoof)'), steps(t, 30, -40, 70, 1320),
         star('polaris', t, NIGHT, 0.2, 0.35), star('vega', t, NIGHT, -0.25, 0.35)],
     },
     {
       at: 10450, zoom: 15, title: 'Fog, and GPS is jammed',
-      alert: '⚠ GPS: no signal (jammed).',
+      alert: 'GPS: no signal (jammed).',
       text: 'Next morning: thick fog and no GPS at all. Only her steps are left, so the uncertainty grows. The map rule cuts out the lakes, because walkers are not in lakes. Alibi says: slow down and follow the trail markers.',
       make: (t) => [steps(t, 150, 120, 250, 6130)],
     },

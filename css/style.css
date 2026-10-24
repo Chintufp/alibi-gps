@@ -82,9 +82,15 @@ body:not(.replay-mode) .replay { display: none; }
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px;
   border: 1px solid var(--line); border-radius: 14px; background: #fff; font-size: 11.5px; font-weight: 650; line-height: 1.2;
 }
-.act span { font-size: 20px; line-height: 1.15; }
+.act i { font-size: 18px; line-height: 1.35; color: #334155; }
 .act.on { background: #eff6ff; border-color: #93c5fd; }
+.act.on i { color: #2563eb; }
 .act.danger.on { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+.act.danger.on i { color: #b91c1c; }
+.wi i { font-size: 15px; }
+.pill i { font-size: 10px; }
+.alert i { color: #dc2626; }
+#hint i { font-size: 12px; }
 .sheet h4 { margin: 14px 2px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
 .witnesses { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -229,8 +235,14 @@ body:not(.replay-mode) .replay { display: none; }
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .3); font-size: 16px; border: 2px solid #ea580c;
 }
+.lm-icon span i { font-size: 14px; color: #ea580c; }
 .lm-icon.used span { border-color: var(--green); }
+.lm-icon.used span i { color: var(--green); }
 .lm-icon.heard span { border-color: #c026d3; box-shadow: 0 0 0 5px rgba(192, 38, 211, .25), 0 2px 8px rgba(0, 0, 0, .3); }
+.lm-icon.heard span i { color: #c026d3; }
+.peak-icon span i { font-size: 12px; color: #57534e; }
+.hut-icon span i { font-size: 12px; color: #7c2d12; }
+.truth-icon span i { font-size: 15px; color: #92400e; }
 .lm-icon.suggest span { animation: bob 1s infinite; border-color: var(--accent); box-shadow: 0 0 0 6px rgba(15, 118, 110, .28); }
 @keyframes bob { 50% { transform: translateY(-4px); } }
 .peak-icon span { width: 24px; height: 24px; font-size: 13px; border-color: #78716c; }
