@@ -281,7 +281,12 @@ Alibi.replay = (function () {
       e.agcFlat = agcN >= 60 && agcMax - agcMin < 0.3;
       e.diag = diagnose(e);
       if (e.diag && e.diag.kind === 'jam' && !(i > 0 && ep[i - 1].diag && ep[i - 1].diag.kind === 'jam') && !e.event) e.event = { kind: 'jam' };
-      if (healthy && e.agc != null && (e.agcDrop == null || e.agcDrop < p.AGC_DROP)) agcBase = agcBase == null ? e.agc : 0.97 * agcBase + 0.03 * e.agc;
+      // the usual gain level: it may rise quickly but only sinks slowly (a 5-minute memory), so a jammer that
+      // turns up the noise very slowly can't drag the baseline down with it
+      if (healthy && e.agc != null && (e.agcDrop == null || e.agcDrop < p.AGC_DROP)) {
+        const k = agcBase == null || e.agc > agcBase ? 0.03 : 0.003;
+        agcBase = agcBase == null ? e.agc : (1 - k) * agcBase + k * e.agc;
+      }
       if (healthy && e.cn0 != null && (e.cn0Drop == null || e.cn0Drop < 6)) cn0Base = cn0Base == null ? e.cn0 : 0.95 * cn0Base + 0.05 * e.cn0;
     }
     // outages that never ended (GPS still gone at the end of the recording)
@@ -313,7 +318,8 @@ Alibi.replay = (function () {
     }
     if (e.dr) {
       const r = e.dr;
-      ws.push({ id: 'motion', type: 'motion', kind: 'point', lat: r.lat, lon: r.lon, sigma: r.sigma, label: r.gyro ? 'Speed + gyroscope' : 'Speed + direction',
+      // fromGps: it was started from a GPS fix, so on its own it can't prove a slow drag away
+      ws.push({ id: 'motion', type: 'motion', kind: 'point', fromGps: true, lat: r.lat, lon: r.lon, sigma: r.sigma, label: r.gyro ? 'Speed + gyroscope' : 'Speed + direction',
         detail: `${r.age ? `trusted fix ${r.age} s ago` : 'this fix'} + ${f(r.dist)} · ` +
           (r.held ? `speed unknown for ${r.held} s, held at ${Math.round(r.spd * 3.6)} km/h` : d.sensor) + ` · ±${f(r.r95)}` });
     }
@@ -337,7 +343,7 @@ Alibi.replay = (function () {
       const lead = `GPS lost for ${e.lost} s and no satellites heard at all. `;
       if (e.agcDrop == null) return { kind: 'blocked', text: lead + 'The receiver gain was not logged here, so jamming can’t be ruled out. Most likely blocked (a tunnel).' };
       if (e.agcFlat) return { kind: 'blocked', text: lead + 'The receiver gain reads normal, but it has not changed once in this recording, so it proves little: most likely blocked (a tunnel), but jamming can’t be ruled out.' };
-      return { kind: 'blocked', text: lead + 'The receiver gain is normal, so the signal is blocked (a tunnel), not jammed.' };
+      return { kind: 'blocked', text: lead + 'The receiver gain is at its usual level, so most likely the signal is blocked (a tunnel), not jammed. (A gain check can miss a jammer that ramps up very slowly.)' };
     }
     return { kind: 'weak', text: `GPS weak: only ${e.nsat} satellites${e.cn0 != null ? `, signal ${e.cn0.toFixed(0)} dB-Hz` : ''}.` };
   }

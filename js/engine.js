@@ -22,10 +22,10 @@ Alibi.engine = (function () {
 
   // How likely each kind of witness is to be wrong by more than its own ± says (a rough judgement per
   // reading, not a measurement): GPS can be jammed or spoofed, a landmark or star can be mixed up with
-  // another, a guess can be off, a mast can be mapped in the wrong place. Steps and dead reckoning don't
-  // jump, they drift, and their ± already grows with the distance. Every kind at least MONITOR likely
-  // gets its own "what if this one is lying?" check in the protection level.
-  const FAULT = { gps: 1e-2, you: 1e-2, landmark: 1e-2, angle: 1e-2, sky: 1e-2, tower: 1e-2, steps: 1e-3, motion: 1e-3 };
+  // another, a guess can be off, a mast can be mapped in the wrong place, a step count can use the wrong
+  // stride. A vehicle's own dead reckoning (odometer and gyroscope) rarely fails that way. Every kind at
+  // least MONITOR likely gets its own "what if this one is lying?" check in the protection level.
+  const FAULT = { gps: 1e-2, you: 1e-2, landmark: 1e-2, angle: 1e-2, sky: 1e-2, tower: 1e-2, steps: 1e-2, motion: 1e-3 };
   const MONITOR = 5e-3;
   const PL_FRAC = 0.99;        // the protection level holds 99 % of where you could be, under every hypothesis
   const monitored = (w) => (FAULT[w.type] == null ? 1e-2 : FAULT[w.type]) >= MONITOR;
@@ -100,7 +100,7 @@ Alibi.engine = (function () {
         const varK = s2a + slopDeg * slopDeg;
         const far = d > VIS_RANGE ? (d - VIS_RANGE) / 5000 : 0;
         e[k] = err; v[k] = varK;
-        ll[k] = -0.5 * err * err / varK - 0.5 * far * far;
+        ll[k] = -0.5 * err * err / varK - 0.5 * Math.log(varK) - 0.5 * far * far;
       }
     } else if (w.kind === 'angle') {
       // the angle between two landmarks seen from the cell, clockwise from A to B (a gyroscope reading:
@@ -122,7 +122,7 @@ Alibi.engine = (function () {
         const varK = s2a + sa * sa + sb * sb, dMax = Math.max(dA, dB);
         const far = dMax > VIS_RANGE ? (dMax - VIS_RANGE) / 5000 : 0;
         e[k] = err; v[k] = varK;
-        ll[k] = -0.5 * err * err / varK - 0.5 * far * far;
+        ll[k] = -0.5 * err * err / varK - 0.5 * Math.log(varK) - 0.5 * far * far;
       }
     } else if (w.kind === 'range') {
       const s2r = w.sigma * w.sigma + slop2, cw = Math.cos(w.lat * D2R);
@@ -253,7 +253,8 @@ Alibi.engine = (function () {
       const ex = pick[0];
       return { kept: all.filter((i) => !ex.includes(i)), excluded: ex, conflict: false, suspects: [] };
     }
-    const suspects = options.length ? [...new Set(options.flat())] : base.fails;
+    // two witnesses that disagree: either could be the liar
+    const suspects = options.length ? [...new Set(options.flat())] : all.length === 2 ? all : base.fails;
     return { kept: all, excluded: [], conflict: true, suspects, options };
   }
 
@@ -365,9 +366,29 @@ Alibi.engine = (function () {
   // separation", as in advanced receiver integrity monitoring) and keep the largest answer.
   // Returns { pl, weakest (index of the witness the answer depends on most, or null), open (true if even
   // the whole search area can't hold it) }.
+  // What could go wrong together counts as one hypothesis: mixing up a landmark spoils its line AND every
+  // angle measured to it. Everything else that could lie is a hypothesis on its own.
+  function keysOf(w) { return w.keys || (w.lmIds ? w.lmIds : w.lmId ? [w.lmId] : []); }
+  function hypotheses(ws, kept) {
+    const out = [], groups = new Map();
+    for (const i of kept) {
+      const keys = keysOf(ws[i]);
+      if (!keys.length) { if (monitored(ws[i])) out.push({ drop: [i], label: ws[i].label }); continue; }
+      keys.forEach((k, j) => {
+        if (!groups.has(k)) groups.set(k, { drop: [], label: null });
+        const gr = groups.get(k);
+        gr.drop.push(i);
+        const w = ws[i], name = (w.names && w.names[j]) || (w.kind === 'angle' ? (w.label.split(' ↔ ')[j] || w.label) : w.label);
+        if (!gr.label || w.kind === 'bearing') gr.label = name;
+      });
+    }
+    for (const gr of groups.values()) out.push(gr.drop.length > 1 ? Object.assign(gr, { label: `${gr.label} (and everything aimed at it)` }) : gr);
+    return out;
+  }
+
   function protection(ws, kept, est, r95, bounds, opts) {
     // with a single witness nothing can lie undetected, but the ± is still the same 99 % radius
-    const hyps = kept.length < 2 ? [] : kept.filter((i) => monitored(ws[i]));
+    const hyps = kept.length < 2 ? [] : hypotheses(ws, kept).filter((h) => h.drop.length < kept.length);
     let g, Ps, Pall;
     for (let level = 0; level < 7; level++) {
       g = makeGrid(bounds);
@@ -375,7 +396,12 @@ Alibi.engine = (function () {
       const mask = g.size <= MASK_BELOW && opts.maskFor ? opts.maskFor(g) : null;
       const L = sumLL(g, evs, kept, mask);
       Pall = toP(g, L);
-      Ps = hyps.map((i) => toP(g, L, evs[i].ll));
+      Ps = hyps.map((h) => {
+        if (h.drop.length === 1) return toP(g, L, evs[h.drop[0]].ll);
+        const minus = new Float64Array(g.N);
+        for (const i of h.drop) { const ll = evs[i].ll; for (let k = 0; k < g.N; k++) minus[k] += ll[k]; }
+        return toP(g, L, minus);
+      });
       // zoom into the area that holds every hypothesis (and the best guess)
       const nb = Ps.concat([Pall]).map((P) => massBounds(g, P, 1e-4)).reduce((a, c) => ({ s: Math.min(a.s, c.s, est.lat), n: Math.max(a.n, c.n, est.lat),
         w: Math.min(a.w, c.w, est.lon), e: Math.max(a.e, c.e, est.lon) }));
@@ -395,41 +421,54 @@ Alibi.engine = (function () {
         for (let i = 0; i < g.nx; i++) if (i < 2 || j < 2 || i >= g.nx - 2 || j >= g.ny - 2) edge += P[j * g.nx + i];
       }
       if (edge > 0.01) open = true;
-      if (r > pl) { pl = r; weakest = hyps[h]; }
+      if (r > pl) { pl = r; weakest = hyps[h].label; }
     });
     return { pl: Math.max(pl, 0.5 * g.cellM), weakest, open };
   }
 
-  function verdict(res, ws, limit) {
-    const lim = '±' + G.fmtDist(limit);
+  // Green: checked, and it holds even if one witness is lying. Yellow: the best guess is usable, but nothing
+  // checks it that closely. Red: the witnesses disagree, or even the best guess is far too uncertain.
+  // So adding an honest witness never makes the light worse. What to do depends on how you travel.
+  const ADVICE = {
+    walk: { yellow: 'slow down', red: 'stop and add witnesses before you move on' },
+    vehicle: { yellow: 'don’t rely on it for close turns', red: 'don’t rely on this position until it is checked again' },
+  };
+  function verdict(res, ws, limit, advice) {
+    const A = ADVICE[advice] || ADVICE.walk, lim = '±' + G.fmtDist(limit);
     if (res.conflict) {
       const names = res.suspects.map((i) => ws[i].label).join(' or ');
       return { light: 'red', headline: 'Witnesses disagree', detail: `Can't tell who is lying: ${names}. Add another witness.` };
     }
     const r = '±' + G.fmtDist(res.r95), n = res.kept.length;
     if (n === 1) {
-      const gpsOnly = ws[res.kept[0]].type === 'gps';
+      const gpsOnly = ws[res.kept[0]].type === 'gps', ok = res.pl <= 10 * limit;
       return {
-        light: res.pl <= 10 * limit ? 'yellow' : 'red',
+        light: ok ? 'yellow' : 'red',
         headline: gpsOnly ? 'Only GPS, nothing checks it' : 'Only one witness',
-        detail: `About ±${G.fmtDist(res.pl)}, but nothing checks it. Add a witness.`,
+        detail: `About ±${G.fmtDist(res.pl)}, but nothing checks it. Safety limit ${lim}: ${ok ? A.yellow : A.red}. Add a witness.`,
       };
     }
     const pl = (res.plOpen ? 'more than ±' : '±') + G.fmtDist(res.pl);
-    const weak = res.weakest != null ? ws[res.weakest].label : null;
-    const ifLying = weak ? ` If ${weak} were lying, the others could only place you within ${pl}.` : '';
-    if (res.pl <= limit) {
+    const weak = res.weakest || null;
+    // a check on GPS that was itself started from GPS (dead reckoning anchored on earlier fixes) can't
+    // prove much: a slow enough drag moves both. Then the best it can say is "consistent".
+    const selfCheck = res.kept.some((i) => ws[i].type === 'gps') && res.kept.every((i) => ws[i].type === 'gps' || ws[i].fromGps);
+    if (res.pl <= limit && !res.plOpen && selfCheck) {
+      return { light: 'yellow', headline: `Consistent, within ${pl}`, detail: `GPS agrees with your own motion. But that motion was started from GPS a little earlier, so a very slow drag could hide in both. Safety limit ${lim}: ${A.yellow}. Add a witness that doesn't depend on GPS.` };
+    }
+    if (res.pl <= limit && !res.plOpen) {
       return { light: 'green', headline: `You're within ${pl}`, detail: `${n} witnesses agree, and this holds even if one of them is lying. Safety limit ${lim}.` };
     }
+    const why = weak ? `If ${weak} is honest: ${r}. If it were lying, the others could only place you within ${pl}.` : `Most likely within ${r}.`;
     const add = weak ? `Add a witness that doesn't depend on ${weak}.` : 'Add a witness.';
-    if (res.pl <= 10 * limit && !res.plOpen) {
-      return { light: 'yellow', headline: `Roughly within ${pl}`, detail: `Most likely within ${r}.${ifLying} Your safety limit is ${lim}: slow down. ${add}` };
+    if (res.r95 <= 10 * limit) {
+      return { light: 'yellow', headline: `Roughly within ${pl}`, detail: `${why} Safety limit ${lim}: ${A.yellow}. ${add}` };
     }
-    return { light: 'red', headline: `Too uncertain (${pl})`, detail: `Most likely within ${r}.${ifLying} Your safety limit is ${lim}: stop. ${add}` };
+    return { light: 'red', headline: `Too uncertain (${pl})`, detail: `${why} Safety limit ${lim}: ${A.red}. ${add}` };
   }
 
   // ---------- main entry ----------
-  // ws: witnesses. opts: { alertLimit (m), maskFor(grid) -> Float64Array|null, fallbackBounds }
+  // ws: witnesses. opts: { alertLimit (m), maskFor(grid) -> Float64Array|null, fallbackBounds, advice: 'walk' | 'vehicle' }
   function analyze(ws, opts) {
     opts = opts || {};
     const empty = { empty: true, light: 'grey', status: [], alerts: [], headline: 'No witnesses yet',
@@ -480,7 +519,7 @@ Alibi.engine = (function () {
         res.plOpen = res.open;
         delete res.open;
       }
-      Object.assign(res, verdict(res, ws, limit));
+      Object.assign(res, verdict(res, ws, limit, opts.advice));
     }
     for (const i of f.excluded) {
       const w = ws[i];

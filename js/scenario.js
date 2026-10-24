@@ -69,7 +69,7 @@ Alibi.scenario = (function () {
   function fell(id, t, err, sigma) {
     const pk = D.peaks[id];
     const b = G.wrap360(G.bearing(t.lat, t.lon, pk.lat, pk.lon) + err);
-    return { id: 'lm-' + id, type: 'landmark', kind: 'bearing', lat: pk.lat, lon: pk.lon, brg: b, sigma, label: pk.name,
+    return { id: 'lm-' + id, type: 'landmark', kind: 'bearing', lat: pk.lat, lon: pk.lon, brg: b, sigma, label: pk.name, keys: [id], names: [pk.name],
       detail: `fell top · compass line ${Math.round(b)}° · ±${2 * sigma}°` };
   }
   // turn on the spot from fell A to fell B: the gyroscope measures the angle, no compass involved
@@ -77,7 +77,7 @@ Alibi.scenario = (function () {
     const a = D.peaks[idA], b = D.peaks[idB];
     const ang = G.wrap180(G.bearing(t.lat, t.lon, b.lat, b.lon) - G.bearing(t.lat, t.lon, a.lat, a.lon) + err);
     return { id: `ang-${idA}-${idB}`, type: 'angle', kind: 'angle', a: { lat: a.lat, lon: a.lon }, b: { lat: b.lat, lon: b.lon },
-      ang, sigma, label: `${a.name} ↔ ${b.name}`,
+      ang, sigma, label: `${a.name} ↔ ${b.name}`, keys: [idA, idB], names: [a.name, b.name],
       detail: `gyroscope · ${Math.abs(ang).toFixed(1)}° ${ang >= 0 ? 'right' : 'left'} from A to B · ±${2 * sigma}°` };
   }
   function mast(t, err, sigma) {
@@ -98,15 +98,16 @@ Alibi.scenario = (function () {
   // carried from the fell centre (known to ±75 m, sigma 30 m): 3 km walked
   const STEPS_3KM = (t) => steps(t, -25, 20, walkSigma(30, 3000), 3000);
   const KIILOPAA = (t) => fell('kiilopaa', t, 2.5, 2), AHOPAAT = (t) => fell('ahopaat', t, -2, 2);
-  const ANGLES = (t) => [angle('ahopaat', 'kiilopaa', t, -0.7, 1), angle('kiilopaa', 'luuvaara', t, 0.8, 1),
-    angle('luuvaara', 'vavypaa', t, 0.5, 1)];
-  const FIX_SIGMA = 40;                                               // after the three-angle fix (±62 m most likely)
+  // three angles between six different fell tops, so mixing up any one fell spoils only one of them
+  const ANGLES = (t) => [angle('ahopaat', 'kiilopaa', t, 0.8, 1), angle('luuvaara', 'vavypaa', t, -0.7, 1),
+    angle('pirttinokka', 'niilanpaa', t, 0.5, 1)];
+  const FIX_SIGMA = 40;                                               // after the three-angle fix (±67 m most likely)
 
   const STEPS = [
     {
       at: 0, zoom: 15, title: 'Morning at the trailhead',
-      text: 'Aino starts a day hike at Kiilopää in Urho Kekkonen National Park, which reaches the Russian border. Her GPS agrees with what she knows: she is at the fell centre. Two independent witnesses agree, so even if one of them were lying she would be within ±93 m: green. While GPS is confirmed, she calibrates her phone compass on a fell top.',
-      make: (t) => [gps(t), you(D.huts.start, 30, 'at Kiilopää fell centre')],
+      text: 'Aino starts a day hike at Kiilopää in Urho Kekkonen National Park, which reaches the Russian border. Her GPS agrees with what she knows: she is at the fell centre. Two independent witnesses agree, so even if one of them were lying she would be within ±65 m: green. While GPS is confirmed, she calibrates her phone compass on a fell top.',
+      make: (t) => [gps(t), you(D.huts.start, 50 / 2.45, 'at Kiilopää fell centre')],
     },
     {
       at: 2000, zoom: 14, title: 'On the trail',
@@ -130,12 +131,12 @@ Alibi.scenario = (function () {
     },
     {
       at: 3000, zoom: 14, title: 'Three angles, no compass',
-      text: 'She turns on the spot from fell to fell, and the gyroscope measures the angles between four fell tops. No compass, so magnets can’t spoil it. Now any one witness could be wrong and she would still be within ±121 m: green.',
+      text: 'She turns on the spot from fell to fell, and the gyroscope measures three angles between six fell tops. No compass, so magnets can’t spoil it. GPS, 650 m off, is proven the liar. She is most likely within ±67 m, but if she had mixed up one fell, only ±285 m, so it stays yellow: green at 150 m needs closer landmarks. She keeps to the trail.',
       make: (t) => [SPOOF(t), STEPS_3KM(t), KIILOPAA(t), AHOPAAT(t)].concat(ANGLES(t)),
     },
     {
       at: 4320, view: 'night', title: 'Night at Luulampi',
-      text: 'GPS suddenly says she is at Murmansk airport, 216 km away: faster than anyone can walk, so it is ignored at once. She aims at Polaris and Vega. The stars agree with her steps, not with GPS, but they are only good to tens of km. Her steps from the last fix carry her position: about ±340 m.',
+      text: 'GPS suddenly says she is at Murmansk airport, 216 km away: faster than anyone can walk, so it is ignored at once. She aims at Polaris and Vega. The stars agree with her steps, not with GPS. Her steps carry her position: ±276 m if they are right. But if they were wrong, the stars alone could only say ±230 km, and Alibi shows that. Yellow: she spends the night at Luulampi hut instead of pushing on in the dark.',
       make: (t) => [gpsAt(MURMANSK, 'says Murmansk airport (simulated spoof)'), steps(t, 30, -40, walkSigma(FIX_SIGMA, 1320), 1320),
         star('polaris', t, NIGHT, 0.3, 0.5), star('vega', t, NIGHT, -0.4, 0.5)],
     },

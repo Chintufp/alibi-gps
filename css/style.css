@@ -318,3 +318,7 @@ body:not(.replay-mode) .replay { display: none; }
   .review { left: 50%; right: auto; bottom: 16px; width: 480px; transform: translateX(-50%); border-radius: 18px; }
   .toast { bottom: 24px; left: calc(50% + 195px); }
 }
+/* long pickers (the replay scenes) scroll inside the card, so Close is always on screen */
+#picker .modal-card { display: flex; flex-direction: column; max-height: calc(100dvh - 20px); }
+#pickerBody { overflow-y: auto; min-height: 0; }
+#pickerClose { flex: none; }

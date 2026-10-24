@@ -231,7 +231,7 @@
     if (state.story) return;
     state.pending = 'you';
     hideWhileGuessing();
-    const chips = [200, 1000, 5000].map((r) =>
+    const chips = [50, 200, 1000, 5000].map((r) =>
       `<button class="chip ${r === state.youRadius ? 'on' : ''}" data-r="${r}">±${G.fmtDist(r)}</button>`).join('');
     toastHTML('<b>Tap where YOU think you are, from what you see.</b> GPS is hidden for now: a guess copied from it is no extra witness.' +
       `<div class="chips">${chips}<button class="chip" data-cancel="1">Cancel</button></div>`, 0);
@@ -319,6 +319,8 @@
 
   // Tapping a landmark: normally aim at it; while measuring an angle, it picks A or B
   function onLandmarkClick(lm) {
+    // while you pick where you are, a tap on a landmark icon means "I'm here", not "aim at it"
+    if (state.pending === 'you') { map.fire('click', { latlng: L.latLng(lm.lat, lm.lon) }); return; }
     if (state.pending === 'angleA') {
       state.angleA = lm;
       state.pending = 'angleB';
@@ -786,6 +788,7 @@
 
   function showReview() {
     const s = aim.shot;
+    hideToast();      // a leftover hint must not sit over the review card
     $('aimPanel').classList.add('hidden');
     $('review').classList.remove('hidden');
     $('reviewImg').src = s.photo || '';
@@ -1095,6 +1098,7 @@
     state.steps = on;
     state.walk = null;
     if (on) SEN.start().then((ok) => { if (!ok) toast('Motion sensors are not available or not allowed.'); });
+    keepAwake(on);
     SEN.setSteps(on, (cur) => {
       if (!cur || cur.heading == null) return;
       const h = correctedBearing(cur.heading) * G.D2R;
@@ -1108,6 +1112,18 @@
       if (++stepCount % 4 === 0) schedule();
     });
   }
+
+  // A web page can't count steps with the screen off, so keep the screen on while step counting runs
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen');
+      if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch (e) { wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.steps) { wakeLock = null; keepAwake(true); }
+  });
 
   // The step watchdog: the last position Alibi could vouch for (a green light), carried along by your steps
   // and compass. It runs in the background and is a witness of its own, so a GPS that drifts away from it
@@ -1165,9 +1181,6 @@
     };
     for (const p of Object.values(D.peaks)) mark(p, 'peak-icon', 'fa-mountain', `${p.name} (fell top)`);
     for (const h of Object.values(D.huts)) mark(h, 'hut-icon', 'fa-house-chimney', h.name);
-    // the one mast Aino's phone hears, and the others that are only landmarks
-    mark(D.mast, 'lm-icon heard', 'fa-tower-cell', `${D.mast.name} · her phone hears it`, -12);
-    for (const m of D.masts) mark(m, 'peak-icon', 'fa-tower-cell', `${m.name} · out of range`);
     state.story.truthLayer = L.layerGroup().addTo(layer.story);
   }
 
@@ -1304,7 +1317,7 @@
       const why = b.held ? ` The recording has no speed in there, so the speed was only held for ${b.held} s: that is why the ± is so wide.` : '';
       return b.ok
         ? { tone: 'good', title: `GPS is back after ${b.gap} s`, text: `${f(b.dist)} from where ${how} said, after ${f(b.since)} without GPS. ` +
-            `Dead reckoning was good to ±${f(b.r95)} (95 %), so GPS agrees and is trusted again.${why}${lie}` }
+            `Dead reckoning was good to ±${f(b.r95)} (95 %), so GPS agrees and is trusted again. Until GPS has passed the check for about 25 s, Alibi can only vouch for it as closely as dead reckoning could, so the light may not be green yet.${why}${lie}` }
         : { tone: 'bad', title: `GPS is back after ${b.gap} s, in the wrong place`, text: `${f(b.dist)} from where ${how} said, far more than its ±${f(b.r95)} allows. ` +
             `Alibi does not trust it, goes on with dead reckoning, and keeps ignoring GPS while it tells the same lie.${why}${lie}` };
     }
@@ -1315,7 +1328,7 @@
     }
     if (ev.kind === 'clear') {
       return { tone: 'good', title: 'GPS agrees again', text: `GPS is back where dead reckoning says (${f(e.gate.dist)} apart, ±${f(e.gate.r95)}) and no longer tells ` +
-        `the lie it was caught with ${ev.since} s ago, so it is trusted again.` };
+        `the lie it was caught with ${ev.since} s ago, so it is trusted again. Until it has passed the check for about 25 s, Alibi can only vouch for it as closely as dead reckoning could.` };
     }
     if (ev.kind === 'jam') return { tone: 'warn', title: 'Possible jamming', text: e.diag.text + (e.gps ? ' Alibi warns before the position is lost.' : '') };
     return null;
@@ -1359,11 +1372,29 @@
     run();
     replayHeader();
     const res = state.result;
+    // a jamming warning and a green light would contradict each other: GPS may drop out any moment
+    if (res && e.diag && e.diag.kind === 'jam' && res.light === 'green') {
+      res.light = 'yellow';
+      $('light').className = 'light yellow';
+      $('headline').textContent = `Within ±${G.fmtDist(res.pl || res.r95)}, but GPS may be jammed`;
+    }
+    // the end of the recording: how did it go?
+    if (i === ep.length - 1 && !e.event) {
+      const ign = ep.filter((x) => x.rejected).length, mins = Math.round(ep.length / 60);
+      $('replayCardTitle').textContent = 'End of the recording';
+      $('replayCardText').textContent = a ? `${mins} minutes. During the simulated attack GPS was ignored for ${ign} s.`
+        : `${mins} minutes of real driving or riding, checked every second: GPS was ${ign ? `ignored for ${ign} s` : 'never wrongly ignored'}.`;
+      $('replayCard').className = 'replay-card good';
+      R.card = i;
+    }
     let text = replayStatus(e, D);
     if (a && e.truth && res && res.est) text += ` Alibi is ${G.fmtDist(G.dist(res.est.lat, res.est.lon, e.truth.lat, e.truth.lon))} from the real position.`;
     $('replayText').textContent = text;
     const here = e.gps && !e.rejected ? e.gps : e.dr;
-    if (!R.flying) replayKeepVisible(e.back ? [e.gps, e.dr] : [here, e.event && e.gps]);
+    // when GPS is caught, zoom in so the gap between the lie, the real position and dead reckoning can be seen
+    if (e.event && e.event.kind === 'spoof' && e.gps && e.dr) {
+      flyToBoundsVisible(L.latLngBounds([e.gps, e.dr].concat(e.truth ? [e.truth] : []).map((p) => [p.lat, p.lon])).pad(1.5));
+    } else if (!R.flying) replayKeepVisible(e.back ? [e.gps, e.dr] : [here, e.event && e.gps]);
     drawReplayChart();
   }
 
@@ -1518,6 +1549,7 @@
       alertLimit: state.story ? 150 : state.replay ? state.replay.limit : MODES[mode].limit,
       maskFor: state.replay ? null : (g) => OSM.maskFor(g, mode, state.story ? 'static' : 'live', schedule),
       fallbackBounds: viewBounds(),
+      advice: state.story || (!state.replay && mode === 'walk') ? 'walk' : 'vehicle',
     });
     res.ms = performance.now() - t0;
     const before = state.result;

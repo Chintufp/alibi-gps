@@ -2,17 +2,21 @@
 // witness's own ±, then a sweep of GPS spoofs of different sizes. Counts how often the light is green, how
 // often the truth is inside the ± (the protection level), how often Alibi is "confidently wrong" (green but
 // further off than the safety limit), and how often it throws out an honest witness.
-// Usage: node tools/check_integrity.js . [runs per case, default 100]
+// Usage: node tools/check_integrity.js . [runs per case, default 100] [error scale, default 1] [seed]
+// An error scale of 2 or 3 draws errors 2 or 3 times bigger than the app assumes (and with heavier tails),
+// to test what happens when the ± defaults are too optimistic.
 const fs = require('fs'), path = require('path');
-const dir = process.argv[2] || '.', RUNS = Number(process.argv[3]) || 100;
+const dir = process.argv[2] || '.', RUNS = Number(process.argv[3]) || 100, SCALE = Number(process.argv[4]) || 1;
 globalThis.window = globalThis;     // load the app's files like a browser does (fast, unlike a vm sandbox)
 for (const f of ['geo.js', 'sky.js', 'engine.js', 'scenario-data.js', 'scenario.js']) (0, eval)(fs.readFileSync(path.join(dir, 'js', f), 'utf8'));
 const A = globalThis.Alibi, G = A.geo, S = A.scenario, D = S.data, LIMIT = 150;
 
 // repeatable random numbers (mulberry32) and Gaussian noise
-let seed = 20261025;
+let seed = Number(process.argv[5]) || 20261025;
 const rand = () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-const gauss = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
+const normal = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
+// with SCALE > 1: bigger errors, and 1 in 10 of them three times bigger again (a heavy tail)
+const gauss = () => SCALE === 1 ? normal() : SCALE * normal() * (rand() < 0.1 ? 3 : 1);
 
 // witnesses with random errors (the same makers the demo uses, fed random instead of fixed errors)
 const m = S.make, walk = (a, d) => Math.hypot(a, 0.08 * d);
@@ -27,13 +31,13 @@ const W = {
 };
 
 const CASES = [
-  { name: '1 trailhead: GPS + guess', at: 0, make: (t) => [W.gps(t), W.you(t, 30)] },
+  { name: '1 trailhead: GPS + guess', at: 0, make: (t) => [W.gps(t), W.you(t, 50 / 2.45)] },
   { name: '2 GPS + steps (2 km)', at: 2000, make: (t) => [W.gps(t), W.steps(t, walk(30, 2000), 2000)] },
   { name: '3 GPS 650 m off + steps', at: 3000, spoof: true, make: (t) => [W.spoof(t, 650, 120), W.steps(t, walk(30, 3000), 3000)] },
   { name: '4 ... + one fell line', at: 3000, spoof: true, make: (t) => [W.spoof(t, 650, 120), W.steps(t, walk(30, 3000), 3000), W.fell('kiilopaa', t, 2)] },
   { name: '5 ... + two fell lines', at: 3000, spoof: true, make: (t) => [W.spoof(t, 650, 120), W.steps(t, walk(30, 3000), 3000), W.fell('kiilopaa', t, 2), W.fell('ahopaat', t, 2)] },
-  { name: '6 ... + three gyro angles', at: 3000, spoof: true, make: (t) => [W.spoof(t, 650, 120), W.steps(t, walk(30, 3000), 3000), W.fell('kiilopaa', t, 2), W.fell('ahopaat', t, 2),
-    W.angle('ahopaat', 'kiilopaa', t, 1), W.angle('kiilopaa', 'luuvaara', t, 1), W.angle('luuvaara', 'vavypaa', t, 1)] },
+  { name: '6 ... + three gyro angles (6 fells)', at: 3000, spoof: true, make: (t) => [W.spoof(t, 650, 120), W.steps(t, walk(30, 3000), 3000), W.fell('kiilopaa', t, 2), W.fell('ahopaat', t, 2),
+    W.angle('ahopaat', 'kiilopaa', t, 1), W.angle('luuvaara', 'vavypaa', t, 1), W.angle('pirttinokka', 'niilanpaa', t, 1)] },
   { name: '7 night: GPS at Murmansk + steps + 2 stars', at: 4320, spoof: true, make: (t) => [m.gpsAt(S.MURMANSK, 'Murmansk'), W.steps(t, walk(40, 1320), 1320),
     W.star('polaris', t, 0.5), W.star('vega', t, 0.5)] },
   { name: '7b night, GPS not flagged as a jump', at: 4320, spoof: true, make: (t) => [Object.assign(m.gpsAt(S.MURMANSK, 'Murmansk'), { suspect: false }),
@@ -65,7 +69,7 @@ function runCase(c) {
 }
 
 const pct = (a, b) => (b ? (100 * a / b).toFixed(0) + ' %' : '-');
-console.log(`Monte Carlo: ${RUNS} runs per case, random errors from each witness's own ±, safety limit ±${LIMIT} m\n`);
+console.log(`Monte Carlo: ${RUNS} runs per case, ${SCALE === 1 ? "random errors drawn from each witness's own ±" : "random errors " + SCALE + "x bigger than the ± says, with heavy tails"}, safety limit ±${LIMIT} m, seed ${seed}\n`);
 console.log('case'.padEnd(44), 'green  yellow red   | truth inside ±  confidently wrong  honest witness thrown out  GPS lie caught  median error');
 for (const c of CASES) {
   const { n, out } = runCase(c);

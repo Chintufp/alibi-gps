@@ -46,7 +46,8 @@ Alibi.geo = (function () {
   function invMercY(y) { return (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * R2D; }
 
   // Magnetic declination in Finland: a linear fit of the World Magnetic Model (WMM2025)
-  // for late 2026. Within ±0.2° inside Finland; elsewhere use the manual compass correction.
+  // for late 2026. Within about ±0.1° in most of Finland, but up to ~0.9° off in the far north-west
+  // (Kilpisjärvi); outside Finland use the manual compass correction.
   function declination(lat, lon) { return 12.577 + 0.4644 * (lat - 64) + 0.3781 * (lon - 26); }
   function inFinland(lat, lon) { return lat > 59.5 && lat < 70.2 && lon > 19 && lon < 31.7; }
 

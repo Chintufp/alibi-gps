@@ -6,7 +6,7 @@ others, throws out the one that is lying, and tells you how far you can trust th
 holds even if one of the witnesses is lying, and a green, yellow or red light.
 
 Made for the *When GPS fails / Kun GPS katoaa* challenge (Tampere University, ESA BIC Finland).
-**Main user:** a hiker in Finnish Lapland near the Russian border. The same engine has Drive and Boat modes.
+**Main user:** a hiker in Finnish Lapland, about 30 km from the Russian border. The same engine has Drive and Boat modes.
 
 **Try it:** <https://chintufp.github.io/alibi-gps/> · Lapland demo: <https://chintufp.github.io/alibi-gps/?demo>
 
@@ -28,15 +28,18 @@ A phone shows a confident blue dot even when its position is wrong, and it has n
   the eastern border and on the eastern Gulf coast. ([Traficom](https://traficom.fi/en/news/interference-affecting-mobile-communications-and-satellite-navigation-services-continues-finland))
 - **Next door, in the border area, it reaches the ground.** In East Finnmark, Norway, GPS jamming and spoofing
   near the Russian border have been recorded for years. In March 2026 they disrupted the GPS tracking of the
-  Finnmarksløpet sled-dog race, and its racers were told to carry a map and compass. ([Finnmarksløpet](https://finnmarkslopet.no/2026/03/07/gnns-disturbances-affecting-finnmarkslopets-gps-tracking/))
+  Finnmarksløpet sled-dog race, and its racers were encouraged to carry a map and compass. ([Finnmarksløpet](https://finnmarkslopet.no/2026/03/07/gnns-disturbances-affecting-finnmarkslopets-gps-tracking/))
   Finnmark police have said they depend on good GPS to find missing people in bad weather. ([Barents Observer via RCI, 2019](https://www.rcinet.ca/eye-on-the-arctic/2019/01/10/gps-jamming-norway-finnmark-russia-aircraft-search-rescue-police-signal-emergency/))
 - **Getting lost in the Finnish wilds is common.** In summer 2022 Finnish police handled over 100 cases of
   lost berry pickers, 40 of them in Lapland. ([Yle](https://yle.fi/a/3-12576796))
 
-**Our user: Aino, hiking in Urho Kekkonen National Park**, which reaches the Russian border. Her decisions
-depend on her position: keep going or turn back, which way to the hut, and what position to give 112. A spoofed
-GPS looks perfect, so her phone can't warn her. Map and compass still work, but then everything rests on her
-alone, and nothing checks her either.
+**Our user: Aino, hiking in Urho Kekkonen National Park**, which reaches the Russian border (her trail is
+about 30 km from the Raja-Jooseppi crossing). Honestly: ground-level interference is documented right across
+the border in Finnmark, not yet on her trail, so we extrapolate. Her decisions depend on her position: keep
+going or turn back, which way to the hut, and what position to give 112. A spoofed GPS looks perfect, so her
+phone can't warn her. Map, compass and trail markers still work, but then everything rests on her alone and
+nothing checks her. Alibi turns the same skills (aiming at a fell, recognising the hut) into witnesses that
+check each other, and tells her when her position is proven and when it is not.
 
 **What Alibi gives her:** one position built from everything she has, a ± she can trust even if one source is
 lying, a light that tells her when to stop and add a sighting, and all of it offline. The same engine fits
@@ -46,9 +49,13 @@ boaters in the eastern Gulf of Finland (Boat mode), where interference is a regu
 
 | Light | Means | What Aino does |
 |---|---|---|
-| green | the ± is inside her safety limit (Walk: 150 m), **even if one witness is lying** | carry on |
-| yellow | the ± is up to 10× the limit, or only one witness is left | stay on the marked trail, slow down, add a sighting that doesn't depend on the weakest witness (Alibi names it and suggests the best landmark) |
-| red | the witnesses disagree and Alibi can't tell who is lying, or the ± is far too big | stop; don't take shortcuts or cross lakes; add sightings; if she needs help, call 112 and give the position Alibi trusts, not the raw GPS |
+| green | **proven**: the ± is inside her safety limit (Walk: 150 m) even if one witness is lying | carry on |
+| yellow | the witnesses agree, but nothing proves the position that closely (or only one witness is left) | stay on the marked trail, slow down, add a sighting that doesn't depend on the weakest witness (Alibi names it and suggests the best landmark) |
+| red | the witnesses disagree and Alibi can't tell who is lying, or even the best guess is far too uncertain | stop; don't take shortcuts or cross lakes; add sightings; if she needs help, call 112 and give the position Alibi trusts, not the raw GPS |
+
+In a car, train or boat the words change: yellow says don't rely on it for close turns, red says don't rely
+on the position until it is checked again. A normal hike with GPS and steps is mostly yellow. That's honest
+(steps can't prove GPS to 150 m), and it is why yellow means "carry on carefully", not "danger".
 
 ---
 
@@ -75,13 +82,18 @@ boaters in the eastern Gulf of Finland (Boat mode), where interference is a regu
    honest"). This is "solution separation", as in advanced receiver integrity monitoring. So two witnesses
    that agree but can only check each other loosely give an honest, large ±. The faint inner circle shows
    where you most likely are if everyone is honest.
-5. **Which witnesses could lie.** Each kind has a rough chance of being wrong by more than its own ± (GPS:
-   jammed or spoofed; a landmark or star: mixed up with another; a guess: just wrong; a mast: mapped in the
-   wrong place). Steps don't jump, they drift, and their ± already grows with the distance, so they aren't
-   checked as possible liars. The values are in `js/engine.js` (`FAULT`).
+5. **Which witnesses could lie, and what goes wrong together.** Each kind has a rough chance of being wrong
+   by more than its own ± (GPS: jammed or spoofed; a landmark or star: mixed up with another; a guess: just
+   wrong; a mast: mapped in the wrong place; steps: the wrong stride, or the phone in a pocket). These are
+   judgement calls (`FAULT` in `js/engine.js`), not measurements. Mistakes with one cause are one hypothesis:
+   mixing up a fell spoils its compass line **and** every angle measured to it, so Alibi takes them all out
+   together when it asks "what if this is wrong?". A vehicle's own dead reckoning is not treated as a liar,
+   but a check on GPS that was itself started from GPS can never make the light green.
 6. **Trust light and safety limit.** Green means the ± is inside the safety limit for the mode (Walk 150 m,
    chosen as roughly how far off you can still find a hut or trail marker in poor weather; Drive 50 m; Boat 100 m). Yellow
-   means up to 10× that. Red means a stand-off or far too uncertain. The limit can be changed in Settings.
+   means the best guess is usable but not proven that closely. Red means a stand-off, or even the best guess
+   is far too uncertain. So adding an honest witness never makes the light worse. The limit can be changed
+   in Settings.
 7. **Extra checks.** The **map rule** (walkers aren't in lakes, cars stay on roads, boats stay on lakes and
    rivers) uses OpenStreetMap. It only makes those places very unlikely, not impossible, because people do
    walk on frozen lakes.
@@ -101,15 +113,15 @@ drifting 8 % of the distance walked since the last position Alibi could vouch fo
 
 | # | What happens | Light |
 |---|---|---|
-| 1 | Aino starts at Kiilopää fell centre. GPS and "I'm at the fell centre" agree: ±93 m even if one of them lied. She calibrates her compass while GPS is confirmed. | green |
+| 1 | Aino starts at Kiilopää fell centre. GPS and "I'm at the fell centre" agree: ±65 m even if one of them lied. She calibrates her compass while GPS is confirmed. | green |
 | 2 | 2 km on. GPS says ±12 m, and her steps agree, but steps can only vouch for GPS to **±500 m**. | yellow |
 | 3 | A spoofer slowly drags GPS 650 m off. Too little for the steps to prove a lie, but the ± grows to **1.3 km**, and the truth stays inside it. | yellow |
 | 4 | She aims at **Kiilopää**. GPS doesn't fit the line, but maybe she mixed up the fell: Alibi can't tell which is wrong, and says so. | red |
 | 5 | She aims at **Ahopäät**. The lines cross where her steps say: GPS is ignored. If one fell were mixed up, only ±680 m. | yellow |
-| 6 | She turns from fell to fell and the **gyroscope** measures three angles: no compass, nothing magnetic to fool. Any one witness could be wrong: still ±121 m. | green |
-| 7 | Night: GPS jumps to **Murmansk**, 216 km away, faster than anyone can walk: ignored. Polaris and Vega agree with her steps (to tens of km); her steps carry her: ±340 m. | yellow |
+| 6 | She turns from fell to fell and the **gyroscope** measures three angles between six fells: no compass, nothing magnetic to fool. GPS is proven the liar. Most likely ±67 m, but ±285 m if she mixed up one fell (its line and its angle together), so still yellow: green at 150 m needs closer landmarks. | yellow |
+| 7 | Night: GPS jumps to **Murmansk**, 216 km away, faster than anyone can walk: ignored. Polaris and Vega agree with her steps. Her steps say ±276 m, but if they were wrong the stars alone only say ±230 km, and Alibi shows that: she stays the night at the hut. | yellow |
 | 8 | Fog and jamming: only her steps are left, 7.5 km since the last fix: ±1.8 km with nothing to check them. The **map rule** cuts out the lakes. She follows only the marked trail. | red |
-| 9 | The fog lifts: the hut, two fell tops and the angle between them. About ±120 m even if one were wrong. Safe arrival. | green |
+| 9 | The fog lifts: the hut, two fell tops and the angle between them. ±122 m even if one were wrong (±132 m without the lake rule, as in the headless test). Safe arrival. | green |
 
 The "Aino (the truth)" marker is only there for the audience; Alibi never sees it.
 
@@ -117,32 +129,42 @@ The "Aino (the truth)" marker is only there for the audience; Alibi never sees i
 
 ## Does the ± hold? (Monte Carlo)
 
-`node tools/check_integrity.js .` plays every demo step 100 times with **random** errors drawn from each
-witness's own ±, then hides GPS spoofs of different sizes in random directions.
+`node tools/check_integrity.js . 100` plays every demo step 100 times with **random** errors drawn from each
+witness's own ±, then hides GPS spoofs of different sizes in random directions. Add an error scale
+(`... 100 2`) to draw errors 2 or 3 times bigger than the app assumes, with heavy tails, and a seed to vary
+the random numbers.
 
-| Demo step, with random errors | green | yellow | red | truth inside the ± | confidently wrong (green, but off by more than 150 m) | honest witness thrown out |
+| Demo step, random errors (default seed) | green | yellow | red | truth inside the ± | confidently wrong (green, but off by more than 150 m) | honest witness thrown out |
 |---|---|---|---|---|---|---|
-| 1 GPS + "I'm at the fell centre" | 95 % | 3 % | 2 % | 100 % | 0 | 0 |
+| 1 GPS + "I'm at the fell centre" (±50 m) | 100 % | 0 | 0 | 100 % | 0 | 0 |
 | 2 GPS + steps | 0 | 100 % | 0 | 100 % | 0 | 0 |
 | 3 GPS dragged 650 m + steps | 0 | 84 % | 16 % | 100 % | 0 | 0 |
 | 4 ... + one fell line | 0 | 18 % | 82 % | 100 % | 0 | 0 |
 | 5 ... + two fell lines | 0 | 42 % | 58 % | 100 % | 0 | 0 |
-| 6 ... + three gyroscope angles | 78 % | 22 % | 0 | 100 % | 0 | 0 |
+| 6 ... + three gyroscope angles (six fells) | 0 | 99 % | 1 % | 100 % | 0 | 0 |
 | 7 night: GPS at Murmansk + steps + 2 stars | 0 | 100 % | 0 | 100 % | 0 | 0 |
+| 7b night, if GPS's jump were not flagged | 0 | 62 % | 38 % | 100 % | 0 | 0 |
+| 8 fog: steps only | 0 | 0 | 100 % | 98 % | 0 | 0 |
 | 9 hut + 2 fell lines + angle + steps | 36 % | 63 % | 1 % | 100 % | 0 | 0 |
 
-In 1,000 runs Alibi was never green while more than 150 m off, and never threw out an honest witness. In
-steps 3 to 7 the GPS lie was caught every time once one sighting was added.
+- **These runs use Alibi's own error model, so they only show it is consistent with itself.** The real test
+  is the field. So we also broke the model on purpose:
+  - **Errors 2× bigger than assumed, with heavy tails:** never green while more than 150 m off in 1,000
+    runs. Alibi failed safe: far more red and yellow, and it threw out more honest witnesses (up to 30 %
+    in steps 6 and 9).
+  - **Errors 3× bigger:** green while more than 150 m off once in 1,000 runs (step 9).
+- **Honest witnesses thrown out:** none with the default seed, 1 in 1,000 runs with seed 7.
+- **A slow drag is the hard case.** How often a hidden GPS lie was caught after 3 km of walking (50 runs per
+  size, so roughly ±10 %):
 
-**How big must a hidden GPS lie be to be caught** (after 3 km of walking, spoof in a random direction)?
+| Other witnesses | 200 m | 400 m | 650 m | 1 km | 1.5 km |
+|---|---|---|---|---|---|
+| steps only | 2 % | 4 % | 20 % | 76 % | 98 % |
+| steps + one fell line | 36 % | 84 % | 86 % | 100 % | 100 % |
+| steps + two fell lines | 42 % | 94 % | 98 % | 100 % | 100 % |
 
-| Other witnesses | 200 m | 400 m | 650 m | 1 km |
-|---|---|---|---|---|
-| steps only | 2 % | 4 % | 20 % | 76 % |
-| steps + one fell line | 36 % | 84 % | 86 % | 100 % |
-| steps + two fell lines | 42 % | 94 % | 98 % | 100 % |
-
-When a lie is not caught, the ± still held the truth in 95–100 % of runs: the light goes yellow instead.
+  When a lie is not caught, the ± still held the truth in 95–100 % of runs, and the light was yellow, never
+  green. The exception is the one 1.5 km lie that slipped past steps alone: there the truth was outside.
 
 ---
 
@@ -160,8 +182,12 @@ jumps to the next one.
   25 s back means it doesn't simply agree with the GPS it is checking. A fix that fails the check (0.1 % false
   alarms) is ignored, dead reckoning is never re-anchored on it, and GPS stays ignored for as long as it keeps
   telling the same lie: a spoofer can't win trust back just by waiting.
-- **The ± is honest.** It is a 95 % radius, calibrated on outages cut into both recordings: the truth was
-  inside it in 89–100 % of 10 to 120 s outages (the old version: 54–80 %).
+- **The ± is calibrated.** Dead reckoning's ± is a 95 % radius, tuned on outages cut into both recordings:
+  the truth was inside it in 89–100 % of 10 to 120 s outages (the old version: 54–80 %). That is tuned and
+  scored on the same two recordings, so it is optimistic until tested on new ones.
+- **It can never be green on its own.** The motion check was started from GPS 25 s earlier, so a slow enough
+  drag moves both. With only GPS and this check, the best Alibi says is yellow, "consistent". Green needs a
+  witness that doesn't come from GPS (a landmark, a cell tower, the map).
 - **It says why GPS is missing.** Satellites heard fine but no position: a receiver hiccup. No satellites at
   all: blocked or jammed. "Gain normal, so blocked" is only said where the phone actually logged its receiver
   gain at that moment, and the jamming check runs first, so it can warn while GPS still has a position.
@@ -189,10 +215,12 @@ No false alarms: in 859 seconds of the train and 977 of the car, honest GPS was 
 | GPS comes back off after a tunnel | 7 s tunnel: 300 m always; 27 s outage: 1 km; 111 s tunnel: only about 3 km |
 | Jamming (car, receiver gain drops 9 dB) | warned 15 s before GPS lost its position; GPS came back 19 m from dead reckoning |
 
-The honest weak spots: a drag slower than about 1 m/s (car) or 3 m/s (train) can go unnoticed, and after the
-111 s tunnel a lie of up to about 2 km can't be caught, because without a speed sensor the train really could
-be anywhere within ±1.5 km. A third witness closes both gaps: a landmark, a cell tower, or the map (trains
-stay on the rails). `docs/replay-integrity.svg` plots every error against the ± shown.
+The honest weak spots: a drag slower than about 1 m/s (car) or 3 m/s (train) can go unnoticed, and then the
+truth can be outside the ± shown (in 20–56 % of those seconds); small undetected jumps of 20–75 m leave it
+outside in 4–12 % of seconds. That's why the light is never green with only this check. After the 111 s
+tunnel a lie of up to about 2 km can't be caught, because without a speed sensor the train really could be
+anywhere within ±1.5 km. A third witness closes these gaps: a landmark, a cell tower, or the map (trains stay
+on the rails). `docs/replay-integrity.svg` plots every error against the ± shown.
 
 ### Compass or gyroscope?
 
@@ -257,14 +285,20 @@ it. With no GPS at all:
 **The compass gets checked too.** While you aim, Alibi compares the phone compass with the gyroscope, which
 magnets can't fool. If the compass turned differently from the gyroscope in the last 10 seconds (by more than
 5°), something magnetic is probably near, so Alibi warns you and widens the ±. On an iPhone it also uses the
-phone's own compass accuracy. The compass can only be **calibrated** against GPS when another witness
-confirms GPS (a green light), so a spoofed GPS can't quietly bend every compass line.
+phone's own compass accuracy. Its blind spot: a compass that is off by a **steady** amount passes this check,
+for example Android's compass in the train, which followed the gyroscope 85° away from the magnetometer.
+Calibrating on a landmark, or using the angle tool, covers that. The compass can only be **calibrated**
+against GPS when another witness confirms GPS (a green light), so a spoofed GPS can't quietly bend every
+compass line. Calibration is one offset from one sighting, so "±4° after calibration" is an assumption
+until it is measured.
 
 **The step watchdog.** Turn on step counting in Settings. Alibi then carries the last position it could vouch
-for (a green light) along with your steps and compass, as a witness of its own. It runs in the background:
-if GPS drifts away from it, the light changes and the phone buzzes, and only then does Alibi ask you for a
-sighting. It is moved to each new green position, never to an unchecked GPS fix, or a slow spoofer could drag
-it along.
+for (a green light) along with your steps and compass, as a witness of its own, with no effort from you: if
+GPS drifts away from it, the light changes, the phone buzzes when it turns red, and only then does Alibi ask
+you for a sighting. It is moved to each new green position, never to an unchecked GPS fix, or a slow spoofer
+could drag it along. A web page can't count steps with the screen off, so the screen stays on while it runs
+(a native app would run in the background). It assumes a 0.7 m stride and that you walk where the phone
+points, so its 8 % drift is a guess until measured.
 
 **No phone? Use the simulated view.** On a laptop, or a phone without a compass, the aiming screen shows a
 **simulated view** built from the map. You see the real landmarks around you, and the Sun and stars where
@@ -302,6 +336,7 @@ Put the numbers in the video: "phone compass ±X° measured, angles ±Y°, a fix
 | Compass and peak-finder apps | bearings to landmarks, naming the peaks you see | don't turn sightings into a checked position |
 | Offline map apps | maps without a network | still trust GPS for the blue dot |
 | Research: matching the skyline to terrain, visual positioning | a position from a camera picture | research prototypes, one source |
+| Research: integrity monitoring of fused sensors, e.g. [IM-GIV](https://arxiv.org/abs/2410.22672) (GNSS + inertial + camera), and user-level reliability monitoring of GNSS (Prof. Kuusniemi's doctoral topic) | fault detection, exclusion and protection levels across sensors | built for vehicles and robots with calibrated sensors, not for a person taking sightings by hand on a phone |
 
 **What Alibi adds:** any mix of sources, including your own sightings, the sky, your steps, you and the map,
 goes into **one** engine that checks each against all the others, throws out a liar, and gives a
@@ -367,16 +402,23 @@ servers forbid it; a real app would host its own.
 
 What the integrity checks can and can't do:
 
-- **One liar at a time.** Alibi assumes at most one witness is wrong beyond its ± (and that steps only drift).
-  Two witnesses that share an error can fool it. Examples, and what Alibi does about them: a guess copied
-  from a spoofed GPS dot (GPS is hidden while you pick your spot); a compass calibrated against a spoofed GPS
-  (calibration needs a green light); steps and landmark lines that share the same compass (the compass check
-  against the gyroscope, and angles that need no compass).
+- **One cause of error at a time.** Alibi assumes at most one thing goes wrong at once (one witness, or one
+  mixed-up landmark with everything aimed at it). Two independent mistakes together can fool it. Shared
+  errors, and what Alibi does about them: a guess copied from a spoofed GPS dot (GPS is hidden while you pick
+  your spot); a compass calibrated against a spoofed GPS (calibration needs a green light); steps and lines
+  that share one compass (the compass check against the gyroscope, and angles that need no compass); a
+  vehicle's dead reckoning started from GPS (it can never make the light green on its own).
 - **Slow spoofing is the hard case.** With only steps to check it, a GPS lie under about 1 km after 3 km of
   walking can't be proven (see the Monte Carlo above). What Alibi does: the ± grows as GPS and steps drift
   apart, so the light goes yellow long before the lie is caught; one fell line catches most lies over 400 m.
-- **99 % is not 100 %.** About 1 time in 100 the truth can be outside the ±, more often if two witnesses are
-  wrong together. The fault probabilities and the ± defaults are reasoned guesses until field tests measure them.
+- **99 % is not 100 %, and the ± is only as good as its assumptions.** About 1 time in 100 the truth can be
+  outside the ± even when every assumption holds. The fault probabilities and the ± defaults are reasoned
+  guesses until field tests measure them; the Monte Carlo above shows what happens when real errors are 2–3×
+  bigger than assumed.
+- **A green light can still be over-trusted.** It means "proven to the safety limit under these assumptions",
+  not "certainly right". Keep using the trail markers.
+- **Phone practicalities:** the screen stays on while counting steps, which costs battery, and phones lose
+  battery fast in the cold. A native app would run in the background with the screen off.
 - **In vehicles, speed must come from the vehicle.** The replay uses the recorded speed as a stand-in for a
   wheel-speed sensor or odometer. A phone alone has neither, so then a spoofer also controls the speed, and a
   slow drag can only be caught by other witnesses. The jamming thresholds are untested on real jamming: the
