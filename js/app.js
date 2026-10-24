@@ -446,8 +446,16 @@
       hint: (b.id === 'sun' ? 'Never look straight at the Sun: aim the phone, look at the screen. ' : '') +
         `Look ${G.compass8(b.az)}, about ${Math.round(b.alt)}° up. Put the red cross on it, hold still, then press Take.`,
       onLock: (r) => {
-        const trueAlt = r.value - SKY.refraction(r.value);
-        addWitness({ type: 'sky', kind: 'sky', body: b.id, time: new Date(), alt: trueAlt, sigma: r.sigma, photo: r.photo, label: b.name,
+        const trueAlt = r.value - SKY.refraction(r.value), t = r.time || new Date();
+        // The Sun's direction is known from the clock, and moving 20 km changes it by less than 0.3° here:
+        // a true-north reference that needs no GPS. It corrects the phone compass (every later compass line).
+        if (r.calibrate && b.id === 'sun' && r.heading != null) {
+          const at = refPoint(), p = SKY.radec('sun', t), az = SKY.altAz(p.ra, p.dec, at.lat, at.lon, t).az;
+          state.compassOffset = G.wrap180(state.compassOffset + az - r.heading);
+          state.compassCalibrated = true;
+          toast(`Compass corrected by the Sun: ${state.compassOffset >= 0 ? '+' : ''}${state.compassOffset.toFixed(1)}° (no GPS needed). Do it again if you change phone case or move far.`, 7000);
+        }
+        addWitness({ type: 'sky', kind: 'sky', body: b.id, time: t, alt: trueAlt, sigma: r.sigma, photo: r.photo, label: b.name,
           detail: `${r.value.toFixed(1)}° above the horizon · ${r.source === 'tool' ? 'inclinometer' : 'phone tilt'} · ±${(2 * r.sigma).toFixed(1)}°` });
       },
     });
@@ -544,8 +552,18 @@
     $('wifiAdd').onclick = () => {
       closeWifi();
       state.witnesses = state.witnesses.filter((w) => !(w.type === 'wifi' && w.ssid.toLowerCase() === ssid.toLowerCase()));
+      // Two Wi-Fi names from the same place are one witness, not two: if one is fake or misplaced, so is the
+      // other. Places within 100 m of a place another Wi-Fi name already uses share its key, so the
+      // "what if it is lying?" check drops them together; a name that adds no new place isn't added at all.
+      const others = state.witnesses.filter((w) => w.type === 'wifi');
+      for (const x of sites) {
+        const o = others.flatMap((w) => w.sites).find((y) => G.dist(x.lat, x.lon, y.lat, y.lon) < 100);
+        x.key = o ? o.key : 'wifi' + state.nextId++;
+      }
+      const same = others.find((w) => sites.every((x) => w.sites.some((y) => y.key === x.key)));
+      if (same) { toast(`“${ssid}” comes from the same place as ${same.label}, so it adds nothing new.`, 6000); return; }
       const reach = Math.round(2.45 * Math.max(...sites.map((x) => x.sigma)));
-      addWitness({ type: 'wifi', kind: 'near', ssid, sites, label: `Wi-Fi “${ssid}”`,
+      addWitness({ type: 'wifi', kind: 'near', ssid, sites, keys: [...new Set(sites.map((x) => x.key))], label: `Wi-Fi “${ssid}”`,
         detail: (one ? `near ${sites[0].name}` : `near one of ${sites.length} places`) + ` · within about ${G.fmtDist(reach)}` });
       flyToFit(sites.map((x) => ({ lat: x.lat, lon: x.lon })), 16);
       toast(one ? `Added: you are near ${sites[0].name}, if that Wi-Fi is real.` : `Added: you are near one of ${sites.length} places. Add another witness to tell which.`, 6000);
@@ -704,7 +722,7 @@
   function takeShot() {
     if (!aim) return;
     if (aim.mode === 'angle') { takeAngleShot(); return; }
-    let value = null, spread = 0, check = null;
+    let value = null, spread = 0, check = null, heading = null;
     if (sim.on) value = aim.mode === 'bearing' ? sim.heading : sim.pitch;
     else {
       const avg = SEN.alive() ? SEN.average(1500) : null;
@@ -713,9 +731,12 @@
         spread = avg.headSpread || 0;
         check = SEN.compassCheck(10000);
       }
-      else if (avg && aim.mode === 'elev') { value = avg.elev; spread = avg.elevSpread || 0; }
+      else if (avg && aim.mode === 'elev') {
+        value = avg.elev; spread = avg.elevSpread || 0;
+        if (avg.heading != null && (avg.headSpread || 0) < 3) { heading = correctedBearing(avg.heading); check = SEN.compassCheck(10000); }
+      }
     }
-    aim.shot = { photo: capturePhoto(), value, spread, check, simulated: sim.on };
+    aim.shot = { photo: capturePhoto(), value, spread, check, heading, time: new Date(), simulated: sim.on };
     aim.source = 'phone';
     showReview();
   }
@@ -857,7 +878,12 @@
       $('reviewNote').textContent = warn.text;
       $('reviewPm').value = Math.max(SOURCES[aim.mode][0].pm(), warn.pm);
     }
-    $('reviewCalibRow').classList.toggle('hidden', !(aim.mode === 'bearing' && aim.calibrate && !s.simulated));
+    // GPS that the others vouch for can calibrate the compass on a landmark; the Sun can, with no GPS at all
+    // (not while the compass disagrees with the gyroscope: then something magnetic is near, and that moves)
+    const sunCal = aim.mode === 'elev' && aim.body === 'sun' && s.heading != null && !s.simulated && !(s.check && s.check.drift > 5);
+    $('reviewCalibRow').classList.toggle('hidden', !((aim.mode === 'bearing' && aim.calibrate && !s.simulated) || sunCal));
+    $('reviewCalibText').textContent = sunCal ? `Also correct my phone compass with the Sun (it pointed ${Math.round(s.heading)}°; no GPS needed)`
+      : 'Use this to calibrate my phone compass (GPS is trustworthy right now)';
     $('reviewCalib').checked = false;
     renderSources();
     updateReviewNote();
@@ -936,6 +962,7 @@
     let sigma = Math.max({ bearing: 0.25, angle: 0.1, elev: 0.05 }[aim.mode], (isNaN(pm) ? 2 : pm) / 2);
     if (aim.source === 'phone' && aim.shot.value != null && !aim.shot.simulated) sigma = Math.max(sigma, aim.shot.spread);  // shaky hands count too
     const r = { value: v, sigma, source: aim.source, photo: aim.shot.photo, calibrate: $('reviewCalib').checked && aim.source === 'phone',
+      heading: aim.shot.heading, time: aim.shot.time,
       viaCompass: aim.source === 'phone' && !!aim.shot.viaCompass };
     const cb = aim.onLock;
     closeAim();

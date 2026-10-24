@@ -269,7 +269,7 @@ it. With no GPS at all:
 | I'm about here | Tap the map where you think you are (±200 m / 1 km / 5 km). GPS is hidden while you choose, so your guess is your own and not a copy of a possibly spoofed GPS dot. | real |
 | Landmark | Loads hill tops, churches, towers, water towers, chimneys, lighthouses, wind turbines, ski jumps, wilderness huts, sea beacons, tall buildings and masts from OpenStreetMap. Tap one, put the camera's red cross on it and press **Take**. Check the reading, then **Add witness**. The compass draws a line. You can also mark a landmark yourself. | real |
 | Angle A↔B | Tap two landmarks, aim at A and press **Take**, then turn on the spot to B and press **Take** again. The **gyroscope** measures how far you turned, so there is no compass to be fooled by metal or magnets. The angle puts you on an arc through A and B. Two angles (three landmarks) give a fix; a third angle or another witness makes it a fix Alibi can vouch for. | real |
-| Sky | Pick the Sun or a bright star, aim at it and press **Take**. Its height above the horizon puts you on a band on the map. | real |
+| Sky | Pick the Sun or a bright star, aim at it and press **Take**. Its height above the horizon puts you on a band on the map. Aiming at the Sun can also **correct the phone compass with no GPS**: the clock says where the Sun stands, and being 20 km off changes that by less than 0.3°. | real |
 | Wi-Fi / cell | Type a Wi-Fi name from your phone's Wi-Fi list (no need to connect; your phone lists them with GPS off). Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi reaches only about 100 m. Alibi looks the name up in OpenStreetMap (name, brand, or a mapped Wi-Fi name) where the map is looking and puts a small circle around each place that fits: one shop, or every shop of a chain, and the other witnesses pick the right one. `eduroam` means a university or college. Names that move with you (train, bus, ferry, phone hotspots) and home routers' factory names are refused with a reason. | real |
 | … cell towers | In the same panel. Shows the masts around you as landmarks. Masts within 250 m of each other count as one site. Alibi uses at most three sites, spread around you (the nearest, plus others up to twice as far in clearly different directions), and only those get a pink ring: a narrow one for the serving cell (timing advance) and wide ones for neighbours (signal strength). Browsers can't read cell towers, so which ones you "hear" is made up from your position. | simulated |
 | Spoof GPS | Simulates an attack: first a slow drag (3 m/s), then a 120 km jump. The grey dot is your real GPS. | simulated |
@@ -289,9 +289,11 @@ magnets can't fool. If the compass turned differently from the gyroscope in the 
 5°), something magnetic is probably near, so Alibi warns you and widens the ±. On an iPhone it also uses the
 phone's own compass accuracy. Its blind spot: a compass that is off by a **steady** amount passes this check,
 for example Android's compass in the train, which followed the gyroscope 85° away from the magnetometer.
-Calibrating on a landmark, or using the angle tool, covers that. The compass can only be **calibrated**
-against GPS when another witness confirms GPS (a green light), so a spoofed GPS can't quietly bend every
-compass line. Calibration is one offset from one sighting, so "±4° after calibration" is an assumption
+Calibrating on a landmark, on the Sun, or using the angle tool, covers that. The compass can only be
+**calibrated** against GPS when another witness confirms GPS (a green light), so a spoofed GPS can't quietly
+bend every compass line. The Sun needs no GPS at all: its direction comes from the clock and a rough position
+(tested headlessly with a compass that reads 12° too high: the Sun set the correction to −12.0°). It is not
+offered while the compass disagrees with the gyroscope, because a nearby magnet moves with you. Calibration is one offset from one sighting, so "±4° after calibration" is an assumption
 until it is measured.
 
 **The step watchdog.** Turn on step counting in Settings. Alibi then carries the last position it could vouch

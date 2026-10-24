@@ -399,8 +399,12 @@ Alibi.engine = (function () {
         if (!gr.label || w.kind === 'bearing') gr.label = name;
       });
     }
-    for (const gr of groups.values()) out.push(gr.drop.length > 1 ? Object.assign(gr, { label: `${gr.label} (and everything aimed at it)` }) : gr);
-    return out;
+    for (const gr of groups.values()) {
+      const what = gr.drop.every((i) => ws[i].type === 'wifi') ? 'the other Wi-Fi from that place' : 'everything aimed at it';
+      out.push(gr.drop.length > 1 ? Object.assign(gr, { label: `${gr.label} (and ${what})` }) : gr);
+    }
+    // a chain of shops has one key per shop: dropping the same witnesses again tells nothing new
+    return out.filter((h, i) => out.findIndex((o) => o.drop.join() === h.drop.join()) === i);
   }
 
   function protection(ws, kept, est, r95, bounds, opts) {
