@@ -7,6 +7,8 @@ with all the others, it is probably lying, and Alibi ignores it.
 Made for the *When GPS fails / Kun GPS katoaa* challenge (Tampere University, ESA BIC Finland).
 Main user in the demo: a hiker in Lapland near the Russian border. The same app has Walk, Drive and Boat modes.
 
+**Try it:** <https://chintufp.github.io/alibi-gps/> · Lapland demo: <https://chintufp.github.io/alibi-gps/?demo>
+
 ---
 
 ## Run it
