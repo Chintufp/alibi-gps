@@ -61,6 +61,9 @@
   function addWitness(w) {
     w.id = 'w' + state.nextId++;
     state.witnesses.push(w);
+    // show the panel again, so you see the new witness and what it changed
+    $('sheet').classList.remove('collapsed');
+    placeToast();
     schedule();
   }
   function removeWitness(id) {
@@ -1954,6 +1957,24 @@
   $('actSettings').onclick = openSettings;
   $('settingsClose').onclick = closeSettings;
   $('sheetHandle').onclick = () => { $('sheet').classList.toggle('collapsed'); placeToast(); };
+  // On a phone the panel can also be swiped: up opens it, down (from its top) folds it away. When it is
+  // folded, a tap anywhere on the visible strip (except a button) opens it too.
+  (() => {
+    const sheet = $('sheet');
+    let y0 = null, top0 = 0;
+    const setOpen = (open) => { sheet.classList.toggle('collapsed', !open); placeToast(); };
+    sheet.addEventListener('touchstart', (e) => { y0 = e.touches[0].clientY; top0 = sheet.scrollTop; }, { passive: true });
+    sheet.addEventListener('touchend', (e) => {
+      if (y0 == null) return;
+      const dy = e.changedTouches[0].clientY - y0;
+      y0 = null;
+      if (dy < -30 && sheet.classList.contains('collapsed')) setOpen(true);
+      else if (dy > 40 && top0 <= 0 && !sheet.classList.contains('collapsed')) setOpen(false);
+    }, { passive: true });
+    sheet.addEventListener('click', (e) => {
+      if (sheet.classList.contains('collapsed') && !e.target.closest('button')) setOpen(true);
+    });
+  })();
   $('storyNext').onclick = () => showStep(state.story.k === STORY.count - 1 ? 0 : state.story.k + 1);
   $('storyBack').onclick = () => showStep(Math.max(0, state.story.k - 1));
   $('storyExit').onclick = exitStory;
