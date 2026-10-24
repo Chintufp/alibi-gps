@@ -156,6 +156,11 @@ the random numbers.
     in steps 6 and 9).
   - **Errors 3× bigger:** green while more than 150 m off once in 1,000 runs (step 9).
 - **Honest witnesses thrown out:** none with the default seed, 1 in 1,000 runs with seed 7.
+- **Faults that are not GPS** (end of `check_integrity.js`, 50 runs each): at the hut, Rautupää mistaken
+  for Raututunturit (its line and its angle both wrong) was caught every time and the light went yellow or
+  red; a stride 20 % wrong, a guess 500 m off (the wrong hut) and a 10° compass bias on both lines (a shared
+  error Alibi doesn't model) never gave a green more than 150 m off. The compass bias did make Alibi throw out
+  the honest angle instead in 80 % of runs, but the light stayed yellow or red.
 - **Wi-Fi names** have their own test, `node tools/check_wifi.js . 300` (a city, made-up places), including the
   attacks the round-3 judges found:
 
@@ -334,7 +339,7 @@ Lapland demo uses the same pictures for its witnesses.
 **A 15-minute field test (worth doing before the video).** Every ± default above is an estimate until it is
 measured, so measure it:
 1. Stand somewhere open with GPS on, where you can see three or more landmarks 0.5–3 km away in different
-   directions. Tap **I'm about here** on the exact spot (±200 m), so the light goes green.
+   directions. Tap **I’m about here** on the exact spot (±50 m), so the light goes green.
 2. Calibrate the compass on one landmark, then aim at the others. Note Alibi's reading and the true bearing
    (from the map, or the bearing GPS gives) for each. 5–10 readings show your real compass ±.
 3. Do two **Angle A↔B** measurements, then turn GPS off: how far is Alibi's position from where you stand,

@@ -106,3 +106,47 @@ for (const lines of [0, 1, 2]) {
   }
   console.log(`  steps + ${lines} fell line${lines === 1 ? '' : 's'}:`, row.join(' | '));
 }
+
+// Faults that are not GPS: a mixed-up fell (the case the protection level groups a line and its angles for),
+// a wrong stride, a wrong guess, and one it does NOT model, a compass bias shared by every line.
+// At the hut (step 9: steps, guess, two fell lines, one angle) and in step 6.
+console.log('\nFaults that are not GPS: lights, how often the faulty witness is caught, and whether a green was ever more than 150 m off');
+const D2 = S.data;
+const brg = (t, pk) => G.bearing(t.lat, t.lon, pk.lat, pk.lon);
+const offDir = (t, d) => G.dest(t.lat, t.lon, 360 * rand(), d);
+// she aims at Rautupää thinking it is Raututunturit (54° apart from the hut), and turns from there to Aaslakkapää
+const mixedLine = (t, wrongId, rightId) => Object.assign(m.fell(rightId, t, 0, 2), { brg: G.wrap360(brg(t, D2.peaks[wrongId]) + 2 * gauss()) });
+const mixedAngle = (t, wrongId, rightId, otherId) => Object.assign(m.angle(rightId, otherId, t, 0, 1),
+  { ang: G.wrap180(brg(t, D2.peaks[otherId]) - brg(t, D2.peaks[wrongId]) + gauss()) });
+const HUT = 10900, hutSteps = (t) => W.steps(t, walk(40, 7900), 7900);
+const FAULTS = [
+  { name: 'hut: Rautupää mistaken for Raututunturit', at: HUT, bad: [2, 3],
+    make: (t) => [hutSteps(t), W.you(t, 15), mixedLine(t, 'rautupaa', 'raututunturit'), mixedAngle(t, 'rautupaa', 'raututunturit', 'aaslakkapaa'), W.fell('aaslakkapaa', t, 2)] },
+  { name: 'hut: stride 20 % wrong (1.6 km off)', at: HUT, bad: [0],
+    make: (t) => { const st = hutSteps(t), p = offDir({ lat: st.lat, lon: st.lon }, 0.2 * 7900); return [Object.assign(st, { lat: p.lat, lon: p.lon }), W.you(t, 15),
+      W.fell('raututunturit', t, 2), W.fell('aaslakkapaa', t, 2), W.angle('raututunturit', 'aaslakkapaa', t, 1)]; } },
+  { name: 'hut: guess 500 m off (the wrong hut)', at: HUT, bad: [1],
+    make: (t) => [hutSteps(t), m.you(offDir(t, 500), 15, 'guess'), W.fell('raututunturit', t, 2), W.fell('aaslakkapaa', t, 2), W.angle('raututunturit', 'aaslakkapaa', t, 1)] },
+  { name: 'hut: compass 10° off on both lines (not modelled)', at: HUT, bad: [2, 3],
+    make: (t) => [hutSteps(t), W.you(t, 15), m.fell('raututunturit', t, 10 + 2 * gauss(), 2), m.fell('aaslakkapaa', t, 10 + 2 * gauss(), 2), W.angle('raututunturit', 'aaslakkapaa', t, 1)] },
+  { name: 'step 6: Kiilopää mixed up with Rautupää', at: 3000, bad: [2, 4], spoofGps: true,
+    make: (t) => [W.spoof(t, 650, 120), W.steps(t, walk(30, 3000), 3000), mixedLine(t, 'rautupaa', 'kiilopaa'), W.fell('ahopaat', t, 2),
+      mixedAngle(t, 'rautupaa', 'kiilopaa', 'ahopaat'), W.angle('luuvaara', 'vavypaa', t, 1), W.angle('pirttinokka', 'niilanpaa', t, 1)] },
+];
+for (const c of FAULTS) {
+  const n = { green: 0, yellow: 0, red: 0 };
+  let caught = 0, covered = 0, withEst = 0, wrong = 0, honestOut = 0;
+  for (let r = 0; r < RUNS; r++) {
+    const t = S.along(c.at), ws = c.make(t), res = A.engine.analyze(ws, { alertLimit: LIMIT });
+    n[res.light]++;
+    if (c.bad.some((i) => res.status[i] && res.status[i].state !== 'agrees')) caught++;
+    if (ws.some((w, i) => !c.bad.includes(i) && !(c.spoofGps && w.type === 'gps') && res.status[i] && res.status[i].state === 'ignored')) honestOut++;
+    if (res.est) {
+      const err = G.dist(res.est.lat, res.est.lon, t.lat, t.lon);
+      withEst++; if (err <= res.pl) covered++;
+      if (res.light === 'green' && err > LIMIT) wrong++;
+    }
+  }
+  console.log(`  ${c.name.padEnd(46)} G/Y/R ${pct(n.green, RUNS)}/${pct(n.yellow, RUNS)}/${pct(n.red, RUNS)} · fault caught ${pct(caught, RUNS)}` +
+    ` · honest witness thrown out ${pct(honestOut, RUNS)} · truth inside ± ${pct(covered, withEst)} · confidently wrong ${wrong}`);
+}
