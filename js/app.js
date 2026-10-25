@@ -892,7 +892,7 @@
       : aim.mode === 'angle' ? (s.simulated ? 'Simulated gyroscope reading: how far you turned from A to B.'
         : s.viaCompass ? 'This phone gave no gyroscope reading, so the turn from A to B comes from the compass. Magnets and metal can spoil that, so the ± is wider (±7°, like the phone compass).'
           : 'Gyroscope reading: how far you turned from A to B.')
-        : s.simulated ? 'Simulated phone reading. Fix it below, or switch to a hand compass.'
+        : s.simulated ? `Simulated phone reading. Fix it below, or switch to ${aim.mode === 'elev' ? 'an inclinometer' : 'a hand compass'}.`
           : 'Phone reading. Fix it below if you measured it better another way.';
     $('reviewValue').value = s.value == null ? '' : s.value.toFixed(1);
     $('reviewPm').value = SOURCES[aim.mode][0].pm();
@@ -1249,7 +1249,8 @@
     state.landmarks = [];
     state.suggestId = null;
     state.walk = null;
-    Object.assign(state.gps, { spoof: 'off', suspectUntil: 0, jumpMsg: '', prev: null, liar: null });
+    // a GPS caught lying stays distrusted after Clear, unless the lie was our own simulated spoof
+    Object.assign(state.gps, { spoof: 'off', suspectUntil: 0, jumpMsg: '', prev: null, liar: state.gps.spoof !== 'off' ? null : state.gps.liar });
     drawLandmarks(); refreshButtons(); schedule();
   }
 

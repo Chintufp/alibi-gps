@@ -477,7 +477,7 @@ Alibi.engine = (function () {
   // checks it that closely. Red: the witnesses disagree, or even the best guess is far too uncertain.
   // So adding an honest witness never makes the light worse. What to do depends on how you travel.
   const ADVICE = {
-    walk: { yellow: 'slow down', red: 'stop and add witnesses before you move on' },
+    walk: { yellow: 'stay on the marked trail and add a sighting', red: 'stop, no shortcuts, add a sighting; for help call 112 with this position' },
     vehicle: { yellow: 'don’t rely on it for close turns', red: 'don’t rely on this position until it is checked again' },
   };
   function verdict(res, ws, limit, advice) {
