@@ -564,6 +564,7 @@
   const sim = { on: false, heading: 0, pitch: 0, drag: null };
 
   async function openAim(opts) {
+    hideToast();      // a leftover hint ("Found 48…") must not sit over the camera
     aim = Object.assign({ shot: null, source: 'phone' }, opts);
     $('aimTitle').textContent = opts.title;
     $('aimHint').textContent = opts.hint || '';
