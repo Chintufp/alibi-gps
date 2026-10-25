@@ -174,45 +174,6 @@ Alibi.osm = (function () {
     return out;
   }
 
-  // ---------- places a Wi-Fi name could belong to ----------
-  // Shops, cafés, campuses... whose name (or brand, or mapped Wi-Fi name) fits a Wi-Fi name you can see.
-  // A big place (a campus, a mall) can be heard from anywhere around it, so its size is returned too.
-  const NOT_A_PLACE = /^(highway|waterway|natural|landuse|boundary|route|place|power)$/;
-  async function wifiPlaces(b, wf) {
-    const box = bbox(b), re = Alibi.wifi.pattern(wf.key || '');
-    const find = wf.kind === 'campus'
-      ? `nwr["amenity"~"^(university|college)$"](${box});nwr["internet_access:ssid"~"eduroam",i](${box});`
-      : `nwr["name"~"${re}",i](${box});nwr["brand"~"${re}",i](${box});nwr["internet_access:ssid"~"${re}",i](${box});`;
-    // tags and centres, then the outline's box (how big the place is) for the same elements
-    const d = await overpass(`[out:json][timeout:25];(${find})->.p;.p out center tags 200;.p out bb ids 200;`);
-    const els = new Map();
-    for (const el of d.elements) {
-      const id = el.type + el.id, o = els.get(id) || {};
-      els.set(id, Object.assign(o, el, { tags: el.tags || o.tags }));
-    }
-    const out = [];
-    for (const el of els.values()) {
-      const t = el.tags || {};
-      if (Object.keys(t).some((k) => NOT_A_PLACE.test(k)) && !t.amenity && !t.shop && !t.internet_access) continue;
-      const c = centre(el), bb = el.bounds;
-      let lat = c && c.lat, lon = c && c.lon, half = 0;
-      if (bb) {
-        if (lat == null) { lat = (bb.minlat + bb.maxlat) / 2; lon = (bb.minlon + bb.maxlon) / 2; }
-        half = G.dist(bb.minlat, bb.minlon, bb.maxlat, bb.maxlon) / 2;
-      }
-      if (lat == null) continue;
-      const score = wf.kind === 'campus' ? 1 : Alibi.wifi.fits(t, wf.tokens);
-      if (!score) continue;
-      const name = t.name || t.brand || (wf.kind === 'campus' ? 'Campus' : 'Place');
-      // the same place mapped twice (a shop and its building): keep the bigger one
-      const dup = out.find((o) => G.dist(o.lat, o.lon, lat, lon) < Math.max(80, o.half, half));
-      if (dup) { if (half > dup.half) Object.assign(dup, { lat, lon, half }); continue; }
-      out.push({ lat, lon, half, name, score });
-    }
-    const top = Math.max(0, ...out.map((o) => o.score));
-    return out.filter((o) => o.score === top);
-  }
-
   // ---------- the map rule ----------
   const cache = { water: [], roads: [] };
   const inflight = {};
@@ -381,5 +342,5 @@ Alibi.osm = (function () {
     return { landmarks: elements.length, masts: elements.filter((el) => isMast(el.tags)).length, lakes: water.length, roads: roads.length };
   }
 
-  return { landmarks, masts, wifiPlaces, maskFor, setStaticWater, around, saveArea, iconOf };
+  return { landmarks, masts, maskFor, setStaticWater, around, saveArea, iconOf };
 })();

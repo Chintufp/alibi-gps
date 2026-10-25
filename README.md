@@ -1,7 +1,7 @@
 # Alibi – where am I, really?
 
 **GPS is just one witness.** Alibi asks other witnesses where you are (landmarks you aim at, angles between
-them, the stars, Wi-Fi names, your own steps, you yourself, cell towers and the map), checks every witness against all the
+them, the stars, your own steps, you yourself, cell towers and the map), checks every witness against all the
 others, throws out the one that is lying, and tells you how far you can trust the answer: a **±** that still
 holds even if one of the witnesses is lying, and a green, yellow or red light.
 
@@ -11,8 +11,7 @@ Made for the *When GPS fails / Kun GPS katoaa* challenge (Tampere University, ES
 **Try it:** <https://chintufp.github.io/alibi-gps/> · Lapland demo: <https://chintufp.github.io/alibi-gps/?demo>
 
 **Real or simulated?** Real: the engine and its maths, the Sun and star positions, OpenStreetMap landmarks,
-the phone's camera, compass, gyroscope and step counter, Wi-Fi names you read off your phone, and the
-organisers' own GPS recordings. Simulated:
+the phone's camera, compass, gyroscope and step counter, and the organisers' own GPS recordings. Simulated:
 cell towers (browsers can't read them), every spoofing or jamming attack, and the measurements in the
 Lapland demo (made with the app's own error sizes, see `tools/check_integrity.js` for random ones).
 
@@ -43,15 +42,14 @@ nothing checks her. Alibi turns the same skills (aiming at a fell, recognising t
 check each other, and tells her when her position is checked and when it is not.
 
 **What Alibi gives her:** one position built from everything she has, a ± she can trust even if one source is
-lying, a light that tells her when to stop and add a sighting, and all of it offline once her area is saved
-(only the Wi-Fi lookup needs the network). The same engine fits
+lying, a light that tells her when to stop and add a sighting, and all of it offline once her area is saved. The same engine fits
 boaters in the eastern Gulf of Finland (Boat mode), where interference is a regular event today.
 
 ### The light and what to do
 
 | Light | Means | What Aino does |
 |---|---|---|
-| green | **checked**: the ± is inside her safety limit (Walk: 150 m) even if one witness (or one shared cause, such as one mixed-up fell or one radio attacker) is wrong, with 99 % confidence under Alibi's error sizes | carry on |
+| green | **checked**: the ± is inside her safety limit (Walk: 150 m) even if one witness (or one shared cause, such as one mixed-up fell) is wrong, with 99 % confidence under Alibi's error sizes | carry on |
 | yellow | the witnesses agree, but nothing proves the position that closely (or only one witness is left) | stay on the marked trail, slow down, add a sighting that doesn't depend on the weakest witness (Alibi names it and suggests the best landmark) |
 | red | the witnesses disagree and Alibi can't tell who is lying, or even the best guess is far too uncertain | stop; don't take shortcuts or cross lakes; add sightings; if she needs help, call 112 and give the position Alibi trusts, not the raw GPS |
 
@@ -65,8 +63,7 @@ on the position until it is checked again. A normal hike with GPS and steps is m
 
 1. **Every witness draws a shape.** GPS, your guess and your steps are circles. A landmark you aim at gives a
    line, because you are somewhere along the line you aimed along. The angle between two landmarks gives an
-   arc through both of them. A cell tower gives a ring. A Wi-Fi name gives a small circle around each place
-   it could belong to. A star gives a band: everywhere on Earth where that star is at that height right now.
+   arc through both of them. A cell tower gives a ring. A star gives a band: everywhere on Earth where that star is at that height right now.
 2. **Where the shapes overlap is where you are.** Alibi lays a grid over the map and multiplies the shapes (a
    Bayesian grid filter), zooming in step by step. The orange glow is the result. Long thin shapes, two
    crossing points, anything: no straight-line assumptions.
@@ -161,20 +158,6 @@ the random numbers.
   red; a stride 20 % wrong, a guess 500 m off (the wrong hut) and a 10° compass bias on both lines (a shared
   error Alibi doesn't model) never gave a green more than 150 m off. The compass bias did make Alibi throw out
   the honest angle instead in 80 % of runs, but the light stayed yellow or red.
-- **Wi-Fi names** have their own test, `node tools/check_wifi.js . 300` (a city, made-up places), including the
-  attacks the round-3 judges found:
-
-| Case (300 runs each) | with the assumed errors | errors 2× bigger, heavy tails |
-|---|---|---|
-| honest GPS + café Wi-Fi + a fake hotspot named after a shop 1.3 km away | fake thrown out 100 %, never green | fake thrown out 74 %, never green |
-| GPS spoofed 3 km; the Wi-Fi lookup was centred by it and found only shops near the fake spot | never green (yellow: the places fall together with GPS) | never green |
-| GPS spoofed 2 km + two fake Wi-Fi names there + an honest guess ±200 m | red (stand-off) 100 % | red 99 %, yellow 1 % |
-| no attack: three names from one café, mapped 400 m off | red 100 % (they count once; GPS and Wi-Fi disagree) | red 100 % |
-| GPS 600 m off + café Wi-Fi + guess ±300 m | never green; GPS caught 19 %, honest witness dropped 2 % | never green; honest witness dropped 41 % |
-
-  Wi-Fi names never produced a green that was more than 150 m off. The last line is the weak spot: two weak
-  honest witnesses against one strong liar, with errors bigger than assumed, often lose the vote; the light
-  is then yellow or red, but the yellow ± can miss the truth.
 - **A slow drag is the hard case.** How often a hidden GPS lie was caught after 3 km of walking (50 runs per
   size, so roughly ±10 %):
 
@@ -274,7 +257,7 @@ we score our estimate against afterwards. Everything that carried the train thro
 it. With no GPS at all:
 
 - **The starting point** is whatever Alibi trusted last: a fix from landmarks or angles, the station you got on
-  at, a Wi-Fi name, a cell tower ring, or your own guess.
+  at, a cell tower ring, or your own guess.
 - **Other witnesses keep correcting it**: landmarks and angles, the Sun and stars, cell towers and the map
   rules each give a position by themselves. The Lapland demo ignores GPS from step 5 onwards.
 - **Speed** would come from the vehicle itself (a car's wheel speed, a train's odometer), which a phone app
@@ -286,13 +269,12 @@ it. With no GPS at all:
 
 | Button | What it does | Real or simulated |
 |---|---|---|
-| GPS | Uses your phone's location as one witness (satellites; the browser may also mix in Wi-Fi and cell positioning, which a GPS spoofer doesn't touch but which isn't independent of Alibi's own Wi-Fi witness either). No GPS fix (a laptop)? It offers a clearly labelled simulated GPS at the map centre for demos. | real |
+| GPS | Uses your phone's location as one witness (satellites; the browser may also mix in Wi-Fi and cell positioning). No GPS fix (a laptop)? It offers a clearly labelled simulated GPS at the map centre for demos. | real |
 | I'm about here | Tap the map where you think you are (±200 m / 1 km / 5 km). GPS is hidden while you choose, so your guess isn't a copy of a possibly spoofed GPS dot. But the map may still be centred where GPS put it, so tap what you recognise (a sign, a building, a lake), not just the middle of the map. | real |
 | Landmark | Loads hill tops, churches, towers, water towers, chimneys, lighthouses, wind turbines, ski jumps, wilderness huts, sea beacons, tall buildings and masts from OpenStreetMap. Tap one, put the camera's red cross on it and press **Take**. Check the reading, then **Add witness**. The compass draws a line. You can also mark a landmark yourself. | real |
 | Angle A↔B | Tap two landmarks, aim at A and press **Take**, then turn on the spot to B and press **Take** again. The **gyroscope** measures how far you turned, so there is no compass to be fooled by metal or magnets. The angle puts you on an arc through A and B. Two angles (three landmarks) give a fix; a third angle or another witness makes it a fix Alibi can vouch for. | real |
 | Sky | Pick the Sun or a bright star, aim at it and press **Take**. Its height above the horizon puts you on a band on the map. Aiming at the Sun can also **correct the phone compass with no GPS**: the clock says where the Sun stands, and being 20 km off changes that by less than 0.3°. | real |
-| Wi-Fi / cell | Type a Wi-Fi name from your phone's Wi-Fi list (no need to connect; your phone lists them with GPS off). Shops, cafés, libraries and campuses often name their Wi-Fi after the place, and Wi-Fi rarely reaches more than 200 m. Alibi looks the name up in OpenStreetMap (name, brand, or a mapped Wi-Fi name) where the map is looking and puts a small circle around each place that fits: one shop, or every shop of a chain, and the other witnesses pick the right one. `eduroam` usually means a university or college (some libraries and hospitals have it too, so it counts as one possible liar like any name). Names that move with you (train, bus, ferry, phone hotspots) and home routers' factory names are refused with a reason. | real |
-| … cell towers | In the same panel. Shows the masts around you as landmarks. Masts within 250 m of each other count as one site. Alibi uses at most three sites, spread around you (the nearest, plus others up to twice as far in clearly different directions), and only those get a pink ring: a narrow one for the serving cell (timing advance) and wide ones for neighbours (signal strength). Browsers can't read cell towers, so which ones you "hear" is made up from your position. | simulated |
+| Cell towers | Shows the masts around you as landmarks. Masts within 250 m of each other count as one site. Alibi uses at most three sites, spread around you (the nearest, plus others up to twice as far in clearly different directions), and only those get a pink ring: a narrow one for the serving cell (timing advance) and wide ones for neighbours (signal strength). Browsers can't read cell towers, so which ones you "hear" is made up from your position. | simulated |
 | Spoof GPS | Simulates an attack: first a slow drag (3 m/s), then a 120 km jump. The grey dot is your real GPS. | simulated |
 | Save offline | Saves the landmarks, masts and lakes for 6 × 6 km around the map's centre onto the phone (roads too in Drive mode), so they work with no network. | real |
 | Real log | Replays the organisers' own GPS recordings (see above). | real data |
@@ -323,8 +305,7 @@ until it is measured.
 for (a green light) along with your steps and compass, as a witness of its own, with no effort from you: if
 GPS drifts away from it, the light changes, the phone buzzes when it turns red, and only then does Alibi ask
 you for a sighting. It is moved to each new green position, never to an unchecked GPS fix, or a slow spoofer
-could drag it along. A green now has to hold with GPS and every Wi-Fi name removed together, so a spoofer who
-also fakes Wi-Fi names can't move it either. **Without step counting, witnesses age:** Alibi can't tell
+could drag it along. **Without step counting, witnesses age:** Alibi can't tell
 whether you moved since a sighting, so each witness blurs by about 1 m per second of its age on foot (15 m/s
 by car, 5 m/s by boat), and the list shows how old it is. A web page can't count steps with the screen off, so the screen stays on while it runs
 (a native app would run in the background). It assumes a 0.7 m stride and that you walk where the phone
@@ -425,7 +406,6 @@ servers forbid it; a real app would host its own.
 | GPS | 5–10 m | jammed or spoofed (that's the point) |
 | Landmark line | 2–5° (≈ 50–200 m at 1–3 km) | fog or darkness; the wrong fell (that's why one sighting against GPS gives red, not a verdict); metal near the phone confusing the compass (Alibi checks the compass against the gyroscope and warns) |
 | Angle A↔B (gyroscope) | 1–2° | you walk or tilt the phone a lot between the two shots; the gyroscope drifts slowly, so take both shots within a few seconds |
-| Wi-Fi name | ±200 m around the place (more for a big campus or mall) | the place isn't on the map, or too many places share the name (more than 40 within the search is refused); the lookup needs the network; anyone can name a hotspot "Lidl", and **whoever spoofs GPS can fake Wi-Fi names too**, so GPS and all Wi-Fi names count as one possible liar: Wi-Fi helps find you and catch a lone liar, but never makes the light green on its own |
 | Cell tower ring | ±100–300 m (serving cell) to ±0.5–5 km (neighbours) | wilderness, open sea; a mast mapped in the wrong place; a fake base station (possible, but much harder than faking GPS). Simulated in this demo. |
 | Sky band | ±0.5–1° of tilt ≈ ±50–100 km | clouds. Catches big lies, but can't steer you between rocks. |
 | Steps + compass | drift about 8 % of the distance walked | a long time without another witness |
@@ -499,8 +479,7 @@ It works on Android Chrome and iPhone Safari (iPhone asks for motion permission 
 | `js/engine.js` | the core: grid, shapes, consistency tests, finding the liar, protection level, trust light |
 | `js/geo.js` | distances, bearings, map projection, compass declination for Finland |
 | `js/sky.js` | where the Sun and stars are |
-| `js/osm.js` | OpenStreetMap: landmarks, masts, places a Wi-Fi name could belong to, lakes and roads for the map rule |
-| `js/wifi.js` | reading a Wi-Fi name: which words to search for, and names that move with you or say nothing |
+| `js/osm.js` | OpenStreetMap: landmarks, masts, lakes and roads for the map rule |
 | `js/sensors.js` | phone compass, gyroscope, tilt, step counter, and the compass check |
 | `js/app.js` | map, buttons, aiming view, step watchdog, demo player |
 | `js/scenario.js`, `js/scenario-data.js` | the Lapland demo and its trail, fells and lakes |
@@ -508,7 +487,6 @@ It works on Android Chrome and iPhone Safari (iPhone asks for motion permission 
 | `js/replay.js`, `data/train.json`, `data/car.json` | replay of the organisers' GPS recordings: dead reckoning, the GPS check, simulated attacks |
 | `sw.js` | service worker: keeps the app and viewed map pictures for offline use |
 | `tools/check_integrity.js` | the Monte Carlo test above (`node tools/check_integrity.js . 100`) |
-| `tools/check_wifi.js` | the same kind of test for Wi-Fi names in a city: honest, with a spoofed GPS, a chain of shops, a fake hotspot (`node tools/check_wifi.js . 300`) |
 | `tools/check_spoof.js`, `docs/replay-integrity.svg` | the attack sweep on the real recordings (`node tools/check_spoof.js .`) and its error-against-± plot |
 | `tools/check_story.js`, `check_replay.js`, `check_angle.js`, `check_compass.js` | run the Lapland demo, both recordings, the angle tool and the compass check through the real code without a browser (`node tools/check_story.js .`) |
 | `tools/build_epochs.py` | turns a GnssLogger recording into the replay data (`python tools/build_epochs.py <log.txt> data/train.json "Train"`) |

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Alibi – where am I, really?</title>
-  <meta name="description" content="GPS is just one witness. Alibi checks it against landmarks, the stars, Wi-Fi names, cell towers and your own steps, and ignores the one that is lying.">
+  <meta name="description" content="GPS is just one witness. Alibi checks it against landmarks, the stars, cell towers and your own steps, and ignores the one that is lying.">
   <meta name="theme-color" content="#0f172a">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-  <link rel="stylesheet" href="css/style.css?v=12">
+  <link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
   <div id="map"></div>
@@ -23,7 +23,7 @@
       <div id="intro">
         <div class="intro-title">Alibi: where am I, really?</div>
         <p>GPS is just one <b>witness</b> to where you are, and it can be jammed or faked. Landmarks you aim the
-          camera at, the Sun and stars, Wi-Fi names, (simulated) cell towers, your steps and your own guess are more witnesses. Alibi shows
+          camera at, the Sun and stars, (simulated) cell towers, your steps and your own guess are more witnesses. Alibi shows
           where they agree and catches a lying GPS.</p>
         <p class="intro-key"><b>±50 m</b> means you are within 50 m, even if one witness is lying (99 % sure).<br>
           The light: <span class="kv"><span class="kd green"></span>checked</span>
@@ -51,7 +51,7 @@
       <button class="act" id="actLandmark"><i class="fa-solid fa-tower-observation"></i>Landmark</button>
       <button class="act" id="actAngle"><i class="fa-solid fa-compass-drafting"></i>Angle A↔B</button>
       <button class="act" id="actSky"><i class="fa-solid fa-star"></i>Sky</button>
-      <button class="act" id="actRadio"><i class="fa-solid fa-wifi"></i>Wi-Fi / cell</button>
+      <button class="act" id="actTowers"><i class="fa-solid fa-tower-cell"></i>Cell towers</button>
       <button class="act danger" id="actSpoof"><i class="fa-solid fa-user-secret"></i><em id="spoofLabel">Spoof GPS</em></button>
       <button class="act" id="actSave"><i class="fa-solid fa-download"></i>Save offline</button>
     </div>
@@ -156,24 +156,6 @@
     </div>
   </section>
 
-  <!-- Wi-Fi names you can see (and the simulated cell towers) -->
-  <section id="wifi" class="modal hidden">
-    <div class="modal-card">
-      <h3><i class="fa-solid fa-wifi"></i> Wi-Fi names around you</h3>
-      <p class="note">Open your phone’s Wi-Fi list (no need to connect). Shops, cafés, libraries and campuses often
-        name their Wi-Fi after the place, and Wi-Fi rarely reaches more than 200 m. Type one you can see: Alibi
-        finds that place on the map. Works with GPS off.</p>
-      <form id="wifiForm" class="wifi-row">
-        <input id="wifiName" type="text" placeholder="e.g. Lidl, Kahvila Runo" autocomplete="off" autocapitalize="off"
-          spellcheck="false" enterkeyhint="search" aria-label="Wi-Fi name">
-        <button class="primary" type="submit">Find</button>
-      </form>
-      <div id="wifiResult" aria-live="polite"></div>
-      <button id="wifiCells" class="wide"><i class="fa-solid fa-tower-cell"></i> Cell towers instead (simulated)</button>
-      <button id="wifiClose" class="wide">Close</button>
-    </div>
-  </section>
-
   <!-- settings -->
   <section id="settings" class="modal hidden">
     <div class="modal-card">
@@ -189,16 +171,15 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/geo.js?v=12"></script>
-  <script src="js/sky.js?v=12"></script>
-  <script src="js/wifi.js?v=12"></script>
-  <script src="js/engine.js?v=12"></script>
-  <script src="js/osm.js?v=12"></script>
-  <script src="js/sensors.js?v=12"></script>
-  <script src="js/scenario-data.js?v=12"></script>
-  <script src="js/landmark-data.js?v=12"></script>
-  <script src="js/scenario.js?v=12"></script>
-  <script src="js/replay.js?v=12"></script>
-  <script src="js/app.js?v=12"></script>
+  <script src="js/geo.js?v=13"></script>
+  <script src="js/sky.js?v=13"></script>
+  <script src="js/engine.js?v=13"></script>
+  <script src="js/osm.js?v=13"></script>
+  <script src="js/sensors.js?v=13"></script>
+  <script src="js/scenario-data.js?v=13"></script>
+  <script src="js/landmark-data.js?v=13"></script>
+  <script src="js/scenario.js?v=13"></script>
+  <script src="js/replay.js?v=13"></script>
+  <script src="js/app.js?v=13"></script>
 </body>
 </html>
